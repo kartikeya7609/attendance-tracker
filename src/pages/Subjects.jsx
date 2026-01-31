@@ -240,7 +240,6 @@ export default function Subjects() {
                             <Col xs={12} className="text-center py-5 text-muted">
                                 <FaBook size={40} className="mb-3 opacity-25" />
                                 <p>No subjects yet. Join a timetable or add subjects manually.</p>
-                                <Button variant="link" href="/timetables">Browse Timetables</Button>
                             </Col>
                         )}
                         {subjects.map(sub => {

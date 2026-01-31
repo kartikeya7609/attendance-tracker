@@ -237,7 +237,6 @@ export default function Dashboard() {
                         <FaClock size={40} className="mb-3 opacity-25" />
                         <h5>No classes scheduled</h5>
                         <p>Enjoy your free day!</p>
-                        <Button variant="link" href="/timetables">Find more timetables</Button>
                     </div>
                 ) : (
                     <div className="d-flex flex-column gap-3">
