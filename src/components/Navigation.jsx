@@ -36,8 +36,8 @@ export default function Navigation() {
                         <Nav.Link as={Link} to="/subjects" active={location.pathname === '/subjects'} className="d-flex align-items-center gap-2 rounded-pill px-3">
                             <FaBook /> Subjects
                         </Nav.Link>
-                        <Nav.Link as={Link} to="/timetable" active={location.pathname === '/timetable'} className="d-flex align-items-center gap-2 rounded-pill px-3">
-                            <FaClock /> Timetable
+                        <Nav.Link as={Link} to="/timetables" active={location.pathname === '/timetables'} className="d-flex align-items-center gap-2 rounded-pill px-3">
+                            <FaClock /> Timetables
                         </Nav.Link>
                         <Nav.Link as={Link} to="/history" active={location.pathname === '/history'} className="d-flex align-items-center gap-2 rounded-pill px-3">
                             <FaHistory /> History

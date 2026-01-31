@@ -36,41 +36,13 @@ export default function Subjects() {
             const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
             const subSnap = await getDocs(subQ);
             const subList = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setSubjects(subList);
 
             // 2. Fetch Joined Timetables
             const timetables = await getUserTimetables(currentUser.uid);
             setJoinedTimetables(timetables);
 
-            // 3. Auto-sync subjects from timetables
-            const existingSubjectNames = new Set(subList.map(s => s.name));
-            const timetableSubjects = new Set();
-
-            // Extract all unique subjects from joined timetables
-            timetables.forEach(t => {
-                Object.values(t.schedule || {}).forEach(day => {
-                    day.forEach(cls => {
-                        if (cls.subject && cls.subject !== 'Break' && cls.subject !== 'Free') {
-                            timetableSubjects.add(cls.subject);
-                        }
-                    });
-                });
-            });
-
-            // Add new subjects that don't exist yet
-            for (const subName of timetableSubjects) {
-                if (!existingSubjectNames.has(subName)) {
-                    const newSubDoc = await addDoc(collection(db, "subjects"), {
-                        uid: currentUser.uid,
-                        name: subName,
-                        createdAt: new Date().toISOString(),
-                        autoAdded: true
-                    });
-                    subList.push({ id: newSubDoc.id, name: subName, uid: currentUser.uid, autoAdded: true });
-                }
-            }
-            setSubjects(subList);
-
-            // 4. Fetch Attendance Records to calculate stats
+            // 3. Fetch Attendance Records to calculate stats
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
             const attSnap = await getDocs(attQ);
 
@@ -177,6 +149,10 @@ export default function Subjects() {
             // Leave the timetable
             await leaveTimetable(currentUser.uid, selectedTimetable.id);
 
+            // Optionally: Remove subjects that were only from this timetable
+            // For now, we'll let users manually delete subjects if needed
+            // Or we could add a checkbox to the modal asking if they want to clean up subjects
+
             await fetchData();
             setShowLeaveTimetableModal(false);
             setSelectedTimetable(null);
@@ -208,7 +184,7 @@ export default function Subjects() {
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
                     <div>
                         <h2 className="fw-bold mb-1">Subjects</h2>
-                        <p className="text-muted mb-0">Subjects are automatically synced from your joined timetables</p>
+
                     </div>
                     <div className="d-flex gap-2 w-100 w-md-auto">
                         <Button
@@ -239,8 +215,7 @@ export default function Subjects() {
                         {subjects.length === 0 && (
                             <Col xs={12} className="text-center py-5 text-muted">
                                 <FaBook size={40} className="mb-3 opacity-25" />
-                                <p>No subjects yet. Join a timetable or add subjects manually.</p>
-                                <Button variant="link" href="/timetables">Browse Timetables</Button>
+                                <p>No subjects added yet. Add one to start tracking.</p>
                             </Col>
                         )}
                         {subjects.map(sub => {
@@ -254,7 +229,6 @@ export default function Subjects() {
                                             <div className="d-flex justify-content-between align-items-start mb-3">
                                                 <div className="fw-bold fs-5 text-truncate pe-2" title={sub.name}>
                                                     {sub.name}
-                                                    {sub.autoAdded && <Badge bg="success" className="ms-2 small">Auto</Badge>}
                                                 </div>
                                                 <Button variant="light" size="sm" className="text-danger rounded-circle p-2" onClick={() => handleDelete(sub.id)}>
                                                     <FaTrash size={12} />
@@ -297,7 +271,6 @@ export default function Subjects() {
                         <Card className="border-0 shadow-sm bg-light text-center py-5">
                             <FaClock size={40} className="text-muted opacity-25 mb-3 mx-auto" />
                             <p className="text-muted mb-0">No timetables joined yet.</p>
-                            <Button variant="link" href="/timetables">Browse Timetables</Button>
                         </Card>
                     ) : (
                         <Row className="g-3">

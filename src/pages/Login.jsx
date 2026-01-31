@@ -54,7 +54,7 @@ export default function Login() {
 
                         {error && <Alert variant="danger">{error}</Alert>}
 
-                        <Form onSubmit={handleSubmit}>
+                        {/* <Form onSubmit={handleSubmit}>
                             <Form.Group id="email" className="mb-3">
                                 <Form.Label>Email</Form.Label>
                                 <Form.Control type="email" ref={emailRef} required className="rounded-pill px-3" placeholder="student@example.com" />
@@ -71,7 +71,7 @@ export default function Login() {
                         <div className="position-relative mb-4">
                             <hr className="text-muted" />
                             <span className="position-absolute top-50 start-50 translate-middle px-3 bg-white text-muted small">OR</span>
-                        </div>
+                        </div> */}
 
                         <Button
                             disabled={loading}
@@ -82,9 +82,9 @@ export default function Login() {
                             <FaGoogle color="#DB4437" /> Sign in with Google
                         </Button>
 
-                        <div className="w-100 text-center mt-3 text-muted small">
+                        {/* <div className="w-100 text-center mt-3 text-muted small">
                             New student? <Link to="/signup" className="fw-bold text-decoration-none">Create Account</Link>
-                        </div>
+                        </div> */}
                     </Card.Body>
                 </Card>
             </div>
