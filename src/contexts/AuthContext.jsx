@@ -37,7 +37,7 @@ export function AuthProvider({ children }) {
                 // 1. Native Google Sign-In
                 // Using the specific client ID as requested
                 const result = await FirebaseAuthentication.signInWithGoogle({
-                    clientId: '847360454343-teg07ichndbnotlvobun43hgoajp1mb7.apps.googleusercontent.com',
+                    clientId: '983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com',
                     scopes: ['profile', 'email']
                 });
 
@@ -55,6 +55,8 @@ export function AuthProvider({ children }) {
             }
         } catch (error) {
             console.error('Google Sign-In Error:', error);
+            // DIAGNOSTIC ALERT: Show the full error on the phone screen
+            alert(`Login Failed:\n${error.message}\nCode: ${error.code}`);
             throw error;
         }
     }
