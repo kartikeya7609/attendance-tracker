@@ -173,15 +173,27 @@ adb logcat | Select-String "GoogleAuth|Firebase|Auth"
 ## Configuration Summary
 
 ```json
-// capacitor.config.json
+// capacitor.config.json (Simplified for @capacitor-firebase/authentication)
 {
   "appId": "com.attendance.app",
   "server": {
     "hostname": "attendance-tracker-1627.firebaseapp.com",
     "androidScheme": "https"
+  },
+  "plugins": {
+    "FirebaseAuthentication": {
+      "skipNativeAuth": false,
+      "providers": ["google.com"]
+    }
   }
 }
 ```
+
+### ℹ️ Correct Web Client ID
+If you ever need the Web Client ID for configuration, use the one from your `google-services.json` (Client Type 3):
+**`983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com`**
+
+(Do NOT use IDs starting with `8473...` as they belong to a different project).
 
 ## Next Steps
 

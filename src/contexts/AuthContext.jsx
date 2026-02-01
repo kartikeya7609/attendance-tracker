@@ -36,7 +36,10 @@ export function AuthProvider({ children }) {
             if (Capacitor.isNativePlatform()) {
                 // Use Capacitor Firebase Authentication for native platforms
                 console.log('Using Capacitor Firebase Auth...');
-                const result = await FirebaseAuthentication.signInWithGoogle();
+                const result = await FirebaseAuthentication.signInWithGoogle({
+                    scopes: ['profile', 'email'],
+                    clientId: '847360454343-teg07ichndbnotlvobun43hgoajp1mb7.apps.googleusercontent.com'
+                });
 
                 // CRITICAL: Sign in to the JS SDK using the native ID token
                 // Otherwise the app state won't update
