@@ -37,10 +37,14 @@ export function AuthProvider({ children }) {
                 // Use Capacitor Firebase Authentication for native platforms
                 console.log('Using Capacitor Firebase Auth...');
                 const result = await FirebaseAuthentication.signInWithGoogle();
-                console.log('User signed in:', result.user);
 
-                // The plugin automatically signs the user into Firebase
-                // The onAuthStateChanged listener will pick up the change
+                // CRITICAL: Sign in to the JS SDK using the native ID token
+                // Otherwise the app state won't update
+                if (result.credential && result.credential.idToken) {
+                    const credential = GoogleAuthProvider.credential(result.credential.idToken);
+                    return await signInWithCredential(auth, credential);
+                }
+
                 return result;
             } else {
                 // Use popup for web
