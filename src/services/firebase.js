@@ -1,7 +1,13 @@
 
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, GoogleAuthProvider, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
+import {
+    getAuth,
+    GoogleAuthProvider,
+    indexedDBLocalPersistence,
+    browserLocalPersistence,
+    initializeAuth
+} from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { Capacitor } from "@capacitor/core";
 
@@ -29,7 +35,7 @@ if (!Capacitor.isNativePlatform()) {
 let auth;
 if (Capacitor.isNativePlatform()) {
     auth = initializeAuth(app, {
-        persistence: indexedDBLocalPersistence
+        persistence: [indexedDBLocalPersistence, browserLocalPersistence]
     });
 } else {
     auth = getAuth(app);
