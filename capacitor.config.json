@@ -6,5 +6,15 @@
     "hostname": "attendance-tracker-1627.firebaseapp.com",
     "androidScheme": "https",
     "cleartext": true
+  },
+  "plugins": {
+    "GoogleAuth": {
+      "scopes": [
+        "profile",
+        "email"
+      ],
+      "serverClientId": "983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com",
+      "forceCodeForRefreshToken": true
+    }
   }
 }
