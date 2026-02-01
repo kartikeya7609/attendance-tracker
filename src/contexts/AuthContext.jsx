@@ -34,21 +34,20 @@ export function AuthProvider({ children }) {
     async function loginWithGoogle() {
         try {
             if (Capacitor.isNativePlatform()) {
-                // Use Capacitor Firebase Authentication for native platforms
-                console.log('Using Capacitor Firebase Auth...');
+                // 1. Native Google Sign-In
+                // Using the specific client ID as requested
                 const result = await FirebaseAuthentication.signInWithGoogle({
-                    scopes: ['profile', 'email'],
-                    clientId: '847360454343-teg07ichndbnotlvobun43hgoajp1mb7.apps.googleusercontent.com'
+                    clientId: '847360454343-teg07ichndbnotlvobun43hgoajp1mb7.apps.googleusercontent.com',
+                    scopes: ['profile', 'email']
                 });
 
-                // CRITICAL: Sign in to the JS SDK using the native ID token
-                // Otherwise the app state won't update
-                if (result.credential && result.credential.idToken) {
-                    const credential = GoogleAuthProvider.credential(result.credential.idToken);
-                    return await signInWithCredential(auth, credential);
-                }
+                // 2. Convert to Firebase credential
+                const credential = GoogleAuthProvider.credential(
+                    result.credential?.idToken
+                );
 
-                return result;
+                // 3. Firebase login (signInWithCredential is used, NOT signInWithPopup)
+                return await signInWithCredential(auth, credential);
             } else {
                 // Use popup for web
                 console.log('Using web popup...');
