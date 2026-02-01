@@ -10,7 +10,7 @@ import {
     GoogleAuthProvider,
     signInWithCredential
 } from "firebase/auth";
-import { GoogleAuth } from '@codetrix-studio/capacitor-google-auth';
+import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
 import { Capacitor } from '@capacitor/core';
 
 const AuthContext = React.createContext();
@@ -23,17 +23,6 @@ export function AuthProvider({ children }) {
     const [currentUser, setCurrentUser] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    // Initialize GoogleAuth for native platforms
-    useEffect(() => {
-        if (Capacitor.isNativePlatform()) {
-            GoogleAuth.initialize({
-                clientId: '983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com',
-                scopes: ['profile', 'email'],
-                grantOfflineAccess: true,
-            });
-        }
-    }, []);
-
     function signup(email, password) {
         return createUserWithEmailAndPassword(auth, email, password);
     }
@@ -45,14 +34,14 @@ export function AuthProvider({ children }) {
     async function loginWithGoogle() {
         try {
             if (Capacitor.isNativePlatform()) {
-                // Use native Google Sign-In for mobile
-                console.log('Using native Google Auth...');
-                const googleUser = await GoogleAuth.signIn();
-                console.log('Google user:', googleUser);
+                // Use Capacitor Firebase Authentication for native platforms
+                console.log('Using Capacitor Firebase Auth...');
+                const result = await FirebaseAuthentication.signInWithGoogle();
+                console.log('User signed in:', result.user);
 
-                // Create Firebase credential from Google ID token
-                const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
-                return await signInWithCredential(auth, credential);
+                // The plugin automatically signs the user into Firebase
+                // The onAuthStateChanged listener will pick up the change
+                return result;
             } else {
                 // Use popup for web
                 console.log('Using web popup...');
@@ -65,6 +54,10 @@ export function AuthProvider({ children }) {
     }
 
     function logout() {
+        // Sign out from native Firebase Authentication on native platforms
+        if (Capacitor.isNativePlatform()) {
+            FirebaseAuthentication.signOut().catch(err => console.error('Native signout error:', err));
+        }
         return signOut(auth);
     }
 

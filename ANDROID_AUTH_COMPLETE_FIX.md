@@ -25,44 +25,30 @@ if (Capacitor.isNativePlatform()) {
 ```
 
 ### ✅ 2. Installed Native Google Auth Plugin
-**Plugin:** `@codetrix-studio/capacitor-google-auth`
+**Plugin:** `@capacitor-firebase/authentication`
 
-This plugin provides native Google Sign-In support for iOS and Android, bypassing webview limitations.
+We switched to the official Capacitor Firebase plugin because the previous one (`@codetrix-studio/capacitor-google-auth`) was incompatible with Capacitor 8.
 
 ### ✅ 3. Updated Capacitor Configuration
 **File:** `capacitor.config.json`
 
-Added GoogleAuth plugin configuration:
-```json
-{
-  "plugins": {
-    "GoogleAuth": {
-      "scopes": ["profile", "email"],
-      "serverClientId": "983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com",
-      "forceCodeForRefreshToken": true
-    }
-  }
-}
-```
+Cleaned up configuration (removed old plugin config which caused conflicts).
 
 ### ✅ 4. Updated AuthContext
 **File:** `src/contexts/AuthContext.jsx`
 
 **Changes:**
-- Imported `GoogleAuth` from `@codetrix-studio/capacitor-google-auth`
+- Imported `FirebaseAuthentication` from `@capacitor-firebase/authentication`
 - Added platform detection with `Capacitor.isNativePlatform()`
-- Initialize GoogleAuth on app start
 - Modified `loginWithGoogle()` to use:
-  - **Native Google Auth** on mobile → `GoogleAuth.signIn()` → `signInWithCredential()`
+  - **Native Google Auth** on mobile → `FirebaseAuthentication.signInWithGoogle()`
   - **Popup** on web → `signInWithPopup()`
 
 ```javascript
 async function loginWithGoogle() {
     if (Capacitor.isNativePlatform()) {
-        // Native Google Sign-In for Android/iOS
-        const googleUser = await GoogleAuth.signIn();
-        const credential = GoogleAuthProvider.credential(googleUser.authentication.idToken);
-        return await signInWithCredential(auth, credential);
+        // Native Google Sign-In for mobile
+        return await FirebaseAuthentication.signInWithGoogle();
     } else {
         // Popup for web
         return await signInWithPopup(auth, googleProvider);
@@ -179,10 +165,10 @@ adb logcat | Select-String "GoogleAuth|Firebase|Auth"
 | File | Status | Description |
 |------|--------|-------------|
 | `src/services/firebase.js` | ✅ Modified | Fixed persistence configuration |
-| `src/contexts/AuthContext.jsx` | ✅ Modified | Added native Google Auth |
-| `capacitor.config.json` | ✅ Modified | Added GoogleAuth plugin config |
+| `src/contexts/AuthContext.jsx` | ✅ Modified | Added native Capacitor Firebase Auth |
+| `capacitor.config.json` | ✅ Modified | Removed incompatible plugin config |
 | `android/app/google-services.json` | ✅ Moved | Corrected location |
-| `package.json` | ✅ Updated | Added capacitor-google-auth |
+| `package.json` | ✅ Updated | Switched to @capacitor-firebase/authentication |
 
 ## Configuration Summary
 
@@ -193,11 +179,6 @@ adb logcat | Select-String "GoogleAuth|Firebase|Auth"
   "server": {
     "hostname": "attendance-tracker-1627.firebaseapp.com",
     "androidScheme": "https"
-  },
-  "plugins": {
-    "GoogleAuth": {
-      "serverClientId": "983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com"
-    }
   }
 }
 ```
