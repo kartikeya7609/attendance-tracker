@@ -163,3 +163,53 @@ export const getUserTimetables = async (uid) => {
     }
     return timetables;
 };
+
+// Create a PRIVATE timetable (not published, only for creator)
+export const createPrivateTimetable = async (user, timetableData) => {
+    const newTimetable = {
+        ...timetableData,
+        code: null, // No code for private timetables
+        isPrivate: true,
+        creatorUid: user.uid,
+        creatorName: user.displayName || user.email.split('@')[0],
+        createdAt: Timestamp.now(),
+        attendees: [user.uid] // Only creator
+    };
+
+    const docRef = await addDoc(collection(db, "public_timetables"), newTimetable);
+
+    // Add to user's joined list
+    const joinRef = doc(db, "users", user.uid, "joined_timetables", docRef.id);
+    await setDoc(joinRef, {
+        timetableId: docRef.id,
+        code: null,
+        name: timetableData.name,
+        joinedAt: Timestamp.now()
+    });
+
+    return { id: docRef.id };
+};
+
+// Get timetables CREATED by user (both public and private)
+export const getUserCreatedTimetables = async (uid) => {
+    const q = query(
+        collection(db, "public_timetables"),
+        where("creatorUid", "==", uid)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+};
+
+// Update/Edit an existing timetable
+export const updateTimetable = async (timetableId, timetableData) => {
+    const timetableRef = doc(db, "public_timetables", timetableId);
+
+    await updateDoc(timetableRef, {
+        name: timetableData.name,
+        schedule: timetableData.schedule,
+        updatedAt: Timestamp.now()
+    });
+
+    return { id: timetableId };
+};
+

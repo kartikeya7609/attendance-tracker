@@ -3,35 +3,27 @@ import React, { useState, useEffect } from "react";
 import { Container, Nav, Row, Col, Card, Button, Form, Spinner, Alert } from "react-bootstrap";
 import Navigation from "../components/Navigation";
 import { useAuth } from "../contexts/AuthContext";
-import { createTimetable } from "../services/timetableService";
+import { createTimetable, createPrivateTimetable, updateTimetable } from "../services/timetableService";
 import { db } from "../services/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { FaPlus, FaTrash, FaSave, FaClock, FaArrowLeft } from "react-icons/fa";
-import { useNavigate } from "react-router-dom";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+import { FaPlus, FaTrash, FaSave, FaClock, FaArrowLeft, FaLock } from "react-icons/fa";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 
 export default function CreateTimetable() {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
+    const { id } = useParams(); // For edit mode
+    const location = useLocation();
+    const isEditMode = !!id;
 
-    // Stats/Metadata
     const [timetableName, setTimetableName] = useState("");
     const [userSubjects, setUserSubjects] = useState([]);
     const [loadingSubjects, setLoadingSubjects] = useState(true);
 
-    // Hardcoded List from User Request
     const PRESET_SUBJECTS = [
-        "FLUID AND THERMAL ENGINEERING LABORATORY",
-        "DIGITAL ELECTRONICS",
-        "ELECTRICAL MACHINES",
-        "FLUID AND THERMAL ENGINEERING",
-        "NETWORK ANALYSIS AND SYNTHESIS LABORATORY",
-        "POWER SYSTEMS",
-        "MICRO PROCESSORS AND MICROCONTROLLERS",
         "Break / Lunch",
         "Free Period"
     ];
-
-    // Schedule
     const [activeDay, setActiveDay] = useState("Monday");
     const [scheduleData, setScheduleData] = useState({
         Monday: [],
@@ -60,7 +52,56 @@ export default function CreateTimetable() {
 
     useEffect(() => {
         fetchUserSubjects();
-    }, [currentUser]);
+
+        if (isEditMode) {
+            loadTimetableForEdit();
+        } else {
+            const savedDraft = localStorage.getItem('timetable_draft');
+            if (savedDraft) {
+                try {
+                    const draft = JSON.parse(savedDraft);
+                    setTimetableName(draft.name);
+                    setScheduleData(draft.schedule);
+                } catch (err) {
+                    console.error("Failed to load draft", err);
+                }
+            }
+        }
+    }, [currentUser, id]);
+
+    const loadTimetableForEdit = async () => {
+        try {
+            const timetableRef = doc(db, "public_timetables", id);
+            const timetableSnap = await getDoc(timetableRef);
+
+            if (timetableSnap.exists()) {
+                const data = timetableSnap.data();
+
+                // Check if user is the creator
+                if (data.creatorUid !== currentUser.uid) {
+                    setMessage("You don't have permission to edit this timetable");
+                    setTimeout(() => navigate('/timetables'), 2000);
+                    return;
+                }
+
+                setTimetableName(data.name);
+                setScheduleData(data.schedule || {
+                    Monday: [],
+                    Tuesday: [],
+                    Wednesday: [],
+                    Thursday: [],
+                    Friday: [],
+                    Saturday: []
+                });
+            } else {
+                setMessage("Timetable not found");
+                setTimeout(() => navigate('/timetables'), 2000);
+            }
+        } catch (error) {
+            console.error("Failed to load timetable", error);
+            setMessage("Failed to load timetable");
+        }
+    };
 
     const fetchUserSubjects = async () => {
         try {
@@ -70,8 +111,9 @@ export default function CreateTimetable() {
             setUserSubjects(subjects);
         } catch (error) {
             console.error("Failed to fetch subjects", error);
+        } finally {
+            setLoadingSubjects(false);
         }
-        setLoadingSubjects(false);
     };
 
     const handleAddTimeSlot = () => {
@@ -113,33 +155,102 @@ export default function CreateTimetable() {
         setMessage("");
 
         try {
-            // Filter empty days
             const finalSchedule = {};
             days.forEach(day => {
-                if (scheduleData[day].length > 0) finalSchedule[day] = scheduleData[day];
+                if (scheduleData[day] && scheduleData[day].length > 0) {
+                    finalSchedule[day] = scheduleData[day];
+                }
             });
 
-            const result = await createTimetable(currentUser, {
-                name: timetableName,
-                schedule: finalSchedule
-            });
+            if (isEditMode) {
+                await updateTimetable(id, {
+                    name: timetableName,
+                    schedule: finalSchedule
+                });
+                setSuccess(`Timetable updated successfully!`);
+            } else {
+                const result = await createTimetable(currentUser, {
+                    name: timetableName,
+                    schedule: finalSchedule
+                });
+                localStorage.removeItem('timetable_draft');
+                setSuccess(`Timetable Created & Published! Code: ${result.code}`);
+            }
 
-            setSuccess(`Timetable Created! Code: ${result.code}`);
-
-            // Redirect after delay
             setTimeout(() => {
-                navigate('/');
+                navigate('/timetables');
             }, 2000);
 
         } catch (err) {
             console.error(err);
-            setMessage("Failed to create timetable. Try again.");
+            setMessage(isEditMode ? "Failed to update timetable." : "Failed to create timetable.");
         }
         setSaving(false);
     };
 
-    // Combine presets + user subjects for the dropdown
-    // Use Set to remove duplicates
+    const handleCreatePrivate = async () => {
+        if (!timetableName.trim()) {
+            setMessage("Please enter a timetable name.");
+            return;
+        }
+
+        setSaving(true);
+        setMessage("");
+
+        try {
+            const finalSchedule = {};
+            days.forEach(day => {
+                if (scheduleData[day] && scheduleData[day].length > 0) {
+                    finalSchedule[day] = scheduleData[day];
+                }
+            });
+
+            await createPrivateTimetable(currentUser, {
+                name: timetableName,
+                schedule: finalSchedule
+            });
+
+            localStorage.removeItem('timetable_draft');
+            setSuccess(`Private timetable created! Only you can see and use it.`);
+
+            setTimeout(() => {
+                navigate('/timetables');
+            }, 2000);
+
+        } catch (err) {
+            console.error(err);
+            setMessage("Failed to create private timetable.");
+        }
+        setSaving(false);
+    };
+
+    const handleSaveDraft = () => {
+        if (!timetableName.trim()) {
+            setMessage("Please enter a timetable name.");
+            return;
+        }
+
+        const finalSchedule = {};
+        days.forEach(day => {
+            if (scheduleData[day] && scheduleData[day].length > 0) {
+                finalSchedule[day] = scheduleData[day];
+            }
+        });
+
+        const draft = {
+            name: timetableName,
+            schedule: finalSchedule,
+            savedAt: new Date().toISOString()
+        };
+
+        localStorage.setItem('timetable_draft', JSON.stringify(draft));
+        setSuccess(`Draft saved! You can continue editing or create it later.`);
+
+        setTimeout(() => {
+            setSuccess("");
+        }, 3000);
+    };
+
     const allOptions = Array.from(new Set([...userSubjects, ...PRESET_SUBJECTS]));
 
     if (success) {
@@ -164,16 +275,52 @@ export default function CreateTimetable() {
 
                 <div className="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-4 gap-3">
                     <div>
-                        <h2 className="fw-bold">Create New Timetable</h2>
-                        <p className="text-muted mb-0">Define periods and subjects for a class.</p>
+                        <h2 className="fw-bold">{isEditMode ? 'Edit Timetable' : 'Create New Timetable'}</h2>
+                        <p className="text-muted mb-0">
+                            {isEditMode ? 'Update your timetable details' : 'Define periods and subjects for a class'}
+                        </p>
                     </div>
-                    <Button variant="primary" onClick={handleCreate} disabled={saving} className="rounded-pill px-4 shadow-sm">
-                        {saving ? <Spinner size="sm" /> : <FaSave className="me-2" />}
-                        Create & Publish
-                    </Button>
+                    <div className="d-flex gap-2 flex-wrap">
+                        {!isEditMode && (
+                            <>
+                                <Button
+                                    variant="outline-secondary"
+                                    onClick={handleSaveDraft}
+                                    disabled={saving}
+                                    className="rounded-pill px-4 shadow-sm"
+                                    title="Save temporarily in browser"
+                                >
+                                    <FaSave className="me-2" />
+                                    Save Draft
+                                </Button>
+                                <Button
+                                    variant="outline-info"
+                                    onClick={handleCreatePrivate}
+                                    disabled={saving}
+                                    className="rounded-pill px-4 shadow-sm"
+                                    title="Create private timetable (only you can use it)"
+                                >
+                                    <FaLock className="me-2" />
+                                    Save Private
+                                </Button>
+                            </>
+                        )}
+                        <Button
+                            variant="primary"
+                            onClick={handleCreate}
+                            disabled={saving}
+                            className="rounded-pill px-4 shadow-sm"
+                        >
+                            {saving ? <Spinner size="sm" /> : <FaSave className="me-2" />}
+                            {isEditMode ? 'Update Timetable' : 'Create & Publish'}
+                        </Button>
+                    </div>
                 </div>
 
+
                 {message && <Alert variant="danger">{message}</Alert>}
+                {success && !saving && <Alert variant="success">{success}</Alert>}
+
 
                 <Row className="g-4">
                     <Col lg={4}>

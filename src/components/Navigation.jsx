@@ -25,7 +25,7 @@ export default function Navigation() {
         <Navbar expand="lg" className="shadow-sm mb-4 py-3 sticky-top" style={{ zIndex: 1000 }}>
             <Container>
                 <Navbar.Brand as={Link} to="/" className="fw-bold fs-4 d-flex align-items-center gap-2">
-                    <span className="text-primary">Student</span><span style={{ color: 'var(--text-primary)' }}>Attend</span>
+                    <span className="text-primary">Student</span>
                 </Navbar.Brand>
                 <Navbar.Toggle aria-controls="basic-navbar-nav" />
                 <Navbar.Collapse id="basic-navbar-nav">
@@ -37,7 +37,7 @@ export default function Navigation() {
                             <FaBook /> Subjects
                         </Nav.Link>
                         <Nav.Link as={Link} to="/timetables" active={location.pathname === '/timetables'} className="d-flex align-items-center gap-2 rounded-pill px-3">
-                            <FaClock /> Timetables
+                            <FaClock /> Timetable
                         </Nav.Link>
                         <Nav.Link as={Link} to="/history" active={location.pathname === '/history'} className="d-flex align-items-center gap-2 rounded-pill px-3">
                             <FaHistory /> History

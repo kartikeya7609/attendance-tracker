@@ -6,6 +6,5 @@ import { useAuth } from "../contexts/AuthContext";
 export default function PrivateRoute({ children }) {
     const { currentUser } = useAuth();
 
-    // Removed whitelist check to allow all students
     return currentUser ? children : <Navigate to="/login" />;
 }

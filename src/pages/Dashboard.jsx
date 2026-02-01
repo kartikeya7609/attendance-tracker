@@ -5,9 +5,9 @@ import { useAuth } from "../contexts/AuthContext";
 import { db } from "../services/firebase";
 import AttendanceModal from "../components/AttendanceModal";
 import { getUserTimetables } from "../services/timetableService";
-import { collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc } from "firebase/firestore";
+import { collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { format, startOfWeek, endOfWeek, isSameDay, addDays, subDays } from "date-fns";
-import { FaChartPie, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationTriangle, FaChevronLeft, FaChevronRight } from "react-icons/fa";
+import { FaChartPie, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationTriangle, FaChevronLeft, FaChevronRight, FaEdit } from "react-icons/fa";
 
 export default function Dashboard() {
     const { currentUser } = useAuth();
@@ -92,11 +92,25 @@ export default function Dashboard() {
 
     const getRecord = (cls) => {
         const dateStr = format(viewDate, 'yyyy-MM-dd');
-        return attendanceRecords.find(r =>
+        const found = attendanceRecords.find(r =>
             r.date === dateStr &&
             r.subject === cls.subject &&
             r.startTime === cls.startTime
         );
+
+        if (!found && attendanceRecords.length > 0) {
+            console.log('🔍 Looking for record:', { date: dateStr, subject: cls.subject, startTime: cls.startTime });
+            console.log('📊 Available records for', cls.subject, ':',
+                attendanceRecords.filter(r => r.subject === cls.subject).map(r => ({
+                    date: r.date,
+                    subject: r.subject,
+                    startTime: r.startTime,
+                    status: r.status
+                }))
+            );
+        }
+
+        return found;
     };
 
     const getClassStatus = (cls) => {
@@ -137,17 +151,43 @@ export default function Dashboard() {
         setShowModal(true);
     };
 
+    const openEditModal = (cls, existingRecord) => {
+        setModalClassData({
+            ...cls,
+            date: format(viewDate, 'yyyy-MM-dd'),
+            existingRecordId: existingRecord.id,
+            currentStatus: existingRecord.status
+        });
+        setShowModal(true);
+    };
+
     const handleSaveRecord = async (recordData) => {
         try {
-            await addDoc(collection(db, "attendance_records"), {
+            console.log('💾 Dashboard receiving record to save:', recordData);
+
+            const fullRecord = {
                 uid: currentUser.uid,
                 email: currentUser.email,
                 timestamp: Timestamp.now(),
                 ...recordData
-            });
+            };
+
+            console.log('💾 Full record being saved to Firestore:', fullRecord);
+
+            // Check if this is an update (editing existing record)
+            if (recordData.existingRecordId) {
+                const recordRef = doc(db, "attendance_records", recordData.existingRecordId);
+                const { existingRecordId, ...updateData } = fullRecord; // Remove the ID from update data
+                await updateDoc(recordRef, updateData);
+                console.log('✅ Record updated successfully! Reloading data...');
+            } else {
+                await addDoc(collection(db, "attendance_records"), fullRecord);
+                console.log('✅ Record saved successfully! Reloading data...');
+            }
+
             await loadData();
         } catch (error) {
-            console.error(error);
+            console.error('❌ Failed to save attendance:', error);
             alert("Failed to save attendance.");
         }
     };
@@ -162,6 +202,14 @@ export default function Dashboard() {
             );
         });
         return Array.from(subs).sort();
+    };
+
+    const getExtraClassesForDay = () => {
+        const dateStr = format(viewDate, 'yyyy-MM-dd');
+        return attendanceRecords.filter(r =>
+            r.date === dateStr &&
+            r.isExtra === true
+        ).sort((a, b) => a.startTime.localeCompare(b.startTime));
     };
 
     const currentDayRecord = (cls) => getRecord(cls);
@@ -268,14 +316,25 @@ export default function Dashboard() {
                                             </Col>
                                             <Col md={4} className="text-center text-md-end">
                                                 {isMarked ? (
-                                                    <div className={`d-inline-flex align-items-center gap-2 px-3 py-2 rounded-pill bg-${(record.status === 'Present' || record.status === 'Late') ? 'success' :
-                                                        (record.status === 'Absent' || record.status === 'Class Cancelled') ? 'danger' : 'secondary'
-                                                        }-subtle text-${(record.status === 'Present' || record.status === 'Late') ? 'success' :
+                                                    <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                                        <div className={`d-inline-flex align-items-center gap-2 px-3 py-2 rounded-pill bg-${(record.status === 'Present' || record.status === 'Late') ? 'success' :
                                                             (record.status === 'Absent' || record.status === 'Class Cancelled') ? 'danger' : 'secondary'
-                                                        }`}>
-                                                        {record.status === 'Present' ? <FaCheckCircle /> :
-                                                            record.status === 'Absent' ? <FaTimesCircle /> : <FaExclamationTriangle />}
-                                                        <span className="fw-bold">{record.status}</span>
+                                                            }-subtle text-${(record.status === 'Present' || record.status === 'Late') ? 'success' :
+                                                                (record.status === 'Absent' || record.status === 'Class Cancelled') ? 'danger' : 'secondary'
+                                                            }`}>
+                                                            {record.status === 'Present' ? <FaCheckCircle /> :
+                                                                record.status === 'Absent' ? <FaTimesCircle /> : <FaExclamationTriangle />}
+                                                            <span className="fw-bold">{record.status}</span>
+                                                        </div>
+                                                        <Button
+                                                            variant="outline-secondary"
+                                                            size="sm"
+                                                            className="rounded-pill"
+                                                            onClick={() => openEditModal(cls, record)}
+                                                            title="Update attendance"
+                                                        >
+                                                            <FaEdit />
+                                                        </Button>
                                                     </div>
                                                 ) : (
                                                     <>
@@ -302,6 +361,74 @@ export default function Dashboard() {
                         })}
                     </div>
                 )}
+
+                {/* Extra Classes Section */}
+                {!loading && (() => {
+                    const extraClasses = getExtraClassesForDay();
+                    if (extraClasses.length === 0) return null;
+
+                    return (
+                        <>
+                            <div className="mt-5 pt-4 border-top">
+                                <div className="d-flex align-items-center gap-2 mb-3">
+                                    <FaClock className="text-primary" />
+                                    <h5 className="fw-bold mb-0">Extra Classes</h5>
+                                    <Badge bg="primary" className="rounded-pill">{extraClasses.length}</Badge>
+                                </div>
+
+                                <div className="d-flex flex-column gap-3">
+                                    {extraClasses.map((extra, idx) => (
+                                        <Card key={idx} className="border-0 shadow-sm border-start border-4 border-info">
+                                            <Card.Body className="p-4">
+                                                <Row className="align-items-center">
+                                                    <Col md={3} className="text-center text-md-start mb-3 mb-md-0">
+                                                        <h4 className="fw-bold mb-0">{extra.startTime}</h4>
+                                                        <small className="text-muted">to {extra.endTime}</small>
+                                                        <div className="mt-2">
+                                                            <Badge bg="info" className="text-white">Extra Class</Badge>
+                                                        </div>
+                                                    </Col>
+                                                    <Col md={5} className="mb-3 mb-md-0">
+                                                        <h5 className="fw-bold mb-1 text-info">{extra.subject}</h5>
+                                                        <p className="text-muted small mb-0">Manually logged class</p>
+                                                    </Col>
+                                                    <Col md={4} className="text-center text-md-end">
+                                                        <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap">
+                                                            <div className={`d-inline-flex align-items-center gap-2 px-3 py-2 rounded-pill bg-${(extra.status === 'Present' || extra.status === 'Late') ? 'success' :
+                                                                    (extra.status === 'Absent') ? 'danger' : 'secondary'
+                                                                }-subtle text-${(extra.status === 'Present' || extra.status === 'Late') ? 'success' :
+                                                                    (extra.status === 'Absent') ? 'danger' : 'secondary'
+                                                                }`}>
+                                                                {extra.status === 'Present' ? <FaCheckCircle /> :
+                                                                    extra.status === 'Absent' ? <FaTimesCircle /> : <FaExclamationTriangle />}
+                                                                <span className="fw-bold">{extra.status}</span>
+                                                            </div>
+                                                            <Button
+                                                                variant="outline-secondary"
+                                                                size="sm"
+                                                                className="rounded-pill"
+                                                                onClick={() => openEditModal({
+                                                                    subject: extra.subject,
+                                                                    startTime: extra.startTime,
+                                                                    endTime: extra.endTime,
+                                                                    timetableId: 'extra',
+                                                                    timetableCode: 'EXTRA'
+                                                                }, extra)}
+                                                                title="Update attendance"
+                                                            >
+                                                                <FaEdit />
+                                                            </Button>
+                                                        </div>
+                                                    </Col>
+                                                </Row>
+                                            </Card.Body>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </div>
+                        </>
+                    );
+                })()}
             </Container>
 
             <AttendanceModal

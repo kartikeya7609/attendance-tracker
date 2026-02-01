@@ -9,14 +9,25 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
     const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [subject, setSubject] = useState("");
     const [status, setStatus] = useState("Present");
+    const [startTime, setStartTime] = useState(format(new Date(), 'HH:mm'));
+    const [endTime, setEndTime] = useState(format(new Date(), 'HH:mm'));
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
         if (show) {
             if (classData) {
-                // Regular Schedule Mode
+                // Regular Schedule Mode or Edit Mode
                 setDate(classData.date || format(new Date(), 'yyyy-MM-dd'));
                 setSubject(classData.subject || "");
+                setStartTime(classData.startTime || format(new Date(), 'HH:mm'));
+                setEndTime(classData.endTime || format(new Date(), 'HH:mm'));
+
+                // If editing an existing record, set the current status
+                if (classData.currentStatus) {
+                    setStatus(classData.currentStatus);
+                } else {
+                    setStatus("Present"); // Default for new records
+                }
                 // If the classData has a specific date (from the view), use it. 
                 // In Dashboard viewDate is passed typically via classData if we refactor, 
                 // but checking Dashboard, classData passed is 'cls' which is the schedule item.
@@ -26,6 +37,8 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                 setDate(format(new Date(), 'yyyy-MM-dd'));
                 setSubject(subjects.length > 0 ? subjects[0] : "");
                 setStatus("Present");
+                setStartTime(format(new Date(), 'HH:mm'));
+                setEndTime(format(new Date(), 'HH:mm'));
             }
         }
     }, [show, classData, subjects]);
@@ -42,16 +55,22 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
             date: date,
             subject: subject,
             status: status,
-            // If it's an existing class, valid time is known.
-            // If extra class, maybe we default to current time or don't set specific start/end?
-            // Dashboard expects startTime/endTime for keys usually, but for history just date/subject matters?
-            // We will pass partial data, Dashboard handleMark should handle it.
-            startTime: classData ? classData.startTime : format(new Date(), 'HH:mm'),
-            endTime: classData ? classData.endTime : format(new Date(), 'HH:mm'),
+            startTime: startTime,
+            endTime: endTime,
             timetableId: classData ? classData.timetableId : 'extra',
             timetableCode: classData ? classData.timetableCode : 'EXTRA',
             isExtra: isExtra
         };
+
+        // If editing existing record, include the ID
+        if (classData && classData.existingRecordId) {
+            record.existingRecordId = classData.existingRecordId;
+            console.log('✏️ Updating existing attendance record:', record);
+        } else {
+            console.log('📝 Saving new attendance record:', record);
+        }
+
+        console.log('📋 Original classData:', classData);
 
         await onSave(record);
         setLoading(false);
@@ -61,7 +80,9 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
     return (
         <Modal show={show} onHide={onHide} centered className="attendance-modal">
             <Modal.Header closeButton className="border-0 pb-0">
-                <Modal.Title className="fw-bold">Log Attendance</Modal.Title>
+                <Modal.Title className="fw-bold">
+                    {classData && classData.existingRecordId ? 'Update Attendance' : 'Log Attendance'}
+                </Modal.Title>
             </Modal.Header>
             <Modal.Body className="pt-2">
                 <Form>
@@ -101,6 +122,32 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                             />
                         )}
                     </Form.Group>
+
+                    {/* Time Fields - Only show for extra classes */}
+                    {isExtra && (
+                        <Row className="mb-4">
+                            <Col xs={6}>
+                                <Form.Group>
+                                    <Form.Label className="small text-muted fw-bold">Start Time</Form.Label>
+                                    <Form.Control
+                                        type="time"
+                                        value={startTime}
+                                        onChange={(e) => setStartTime(e.target.value)}
+                                    />
+                                </Form.Group>
+                            </Col>
+                            <Col xs={6}>
+                                <Form.Group>
+                                    <Form.Label className="small text-muted fw-bold">End Time</Form.Label>
+                                    <Form.Control
+                                        type="time"
+                                        value={endTime}
+                                        onChange={(e) => setEndTime(e.target.value)}
+                                    />
+                                </Form.Group>
+                            </Col>
+                        </Row>
+                    )}
 
                     {/* Status Selection */}
                     <Form.Group className="mb-4">

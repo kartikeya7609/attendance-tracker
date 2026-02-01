@@ -47,6 +47,12 @@ function App() {
               </PrivateRoute>
             } />
 
+            <Route path="/edit-timetable/:id" element={
+              <PrivateRoute>
+                <CreateTimetable />
+              </PrivateRoute>
+            } />
+
             <Route path="/timetables" element={
               <PrivateRoute>
                 <TimetableDiscovery />
