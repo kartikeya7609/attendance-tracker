@@ -1,5 +1,10 @@
 {
   "appId": "com.attendance.app",
-  "appName": "attendance.app",
-  "webDir": "dist"
+  "appName": "Smart Attendance",
+  "webDir": "dist",
+  "server": {
+    "hostname": "attendance-tracker-1627.firebaseapp.com",
+    "androidScheme": "https",
+    "cleartext": true
+  }
 }

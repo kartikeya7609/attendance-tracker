@@ -1,8 +1,9 @@
 
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, indexedDBLocalPersistence, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { Capacitor } from "@capacitor/core";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -17,11 +18,31 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
+
+// Initialize Analytics (only on web)
+let analytics;
+if (!Capacitor.isNativePlatform()) {
+    analytics = getAnalytics(app);
+}
+
+// Initialize Auth with proper persistence for Capacitor
+let auth;
+if (Capacitor.isNativePlatform()) {
+    auth = initializeAuth(app, {
+        persistence: indexedDBLocalPersistence
+    });
+} else {
+    auth = getAuth(app);
+}
 
 // Initialize Services
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const googleProvider = new GoogleAuthProvider();
+const db = getFirestore(app);
+const googleProvider = new GoogleAuthProvider();
 
+// Configure Google Provider for better mobile experience
+googleProvider.setCustomParameters({
+    prompt: 'select_account'
+});
+
+export { auth, db, googleProvider };
 export default app;
