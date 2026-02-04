@@ -1,14 +1,13 @@
-
-import React, { useState, useEffect } from "react";
-import { Container, Table, Badge, Spinner, Form, Row, Col, Card, Button, Modal, Tab, Nav, Accordion, Alert } from "react-bootstrap";
+import React, { useState, useEffect, useMemo } from "react";
+import { Container, Table, Badge, Spinner, Form, Row, Col, Card, Button, Modal, Tab, Nav, Accordion, Alert, ProgressBar } from "react-bootstrap";
 import Navigation from "../components/Navigation";
 import { db } from "../services/firebase";
 import { collection, query, orderBy, getDocs, limit, where, doc, getDoc, deleteDoc } from "firebase/firestore";
-import { format } from "date-fns";
-import { FaFileDownload, FaSearch, FaUserShield, FaEye, FaBook, FaClock, FaTrash, FaExclamationTriangle } from "react-icons/fa";
+import { getUserTimetables } from "../services/timetableService";
+import { FaFileDownload, FaSearch, FaUserShield, FaEye, FaBook, FaClock, FaTrash, FaExclamationTriangle, FaUsers, FaCalendarAlt } from "react-icons/fa";
 
 export default function AdminResponses() {
-    const [records, setRecords] = useState([]);
+    const [students, setStudents] = useState([]);
     const [timetables, setTimetables] = useState([]);
     const [loading, setLoading] = useState(true);
     const [filterDate, setFilterDate] = useState("");
@@ -18,7 +17,13 @@ export default function AdminResponses() {
     // Student Detail Modal
     const [showDetail, setShowDetail] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState(null);
-    const [studentDetails, setStudentDetails] = useState({ subjects: [], timetable: {}, recentAttendance: [] });
+    const [studentDetails, setStudentDetails] = useState({
+        overallStats: { present: 0, total: 0, percent: 0 },
+        subjectStats: [],
+        subjectsList: [], // New state for full subject list
+        weeklyStats: [],
+        timetables: []
+    });
     const [detailLoading, setDetailLoading] = useState(false);
 
     // Delete Confirmation Modal
@@ -33,15 +38,69 @@ export default function AdminResponses() {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            // Fetch attendance records
-            const recordsQuery = query(
-                collection(db, "attendance_records"),
-                orderBy("date", "desc"),
-                limit(500)
-            );
+            // 1. Fetch ALL Users first
+            const usersQuery = query(collection(db, "users"));
+            const usersSnap = await getDocs(usersQuery);
+            const allUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
+
+            // Initialize student map with all users
+            const studentMap = {};
+            allUsers.forEach(u => {
+                studentMap[u.uid] = {
+                    uid: u.uid,
+                    email: u.email || "No Email",
+                    totalClasses: 0,
+                    presentClasses: 0,
+                    lastActive: "Never",
+                    subjects: new Set()
+                };
+            });
+
+            // 2. Fetch attendance records and OVERLAY data
+            const recordsQuery = query(collection(db, "attendance_records"), orderBy("date", "desc"));
             const recordsSnap = await getDocs(recordsQuery);
-            const recordsData = recordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-            setRecords(recordsData);
+            const allRecords = recordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+            // Process attendance records to update stats
+            allRecords.forEach(r => {
+                const uid = r.uid;
+                if (!uid) return;
+
+                // Sync: If user found in attendance but not in users col, add them
+                if (!studentMap[uid]) {
+                    studentMap[uid] = {
+                        uid,
+                        email: r.email,
+                        totalClasses: 0,
+                        presentClasses: 0,
+                        lastActive: r.date,
+                        subjects: new Set()
+                    };
+                }
+
+                // Update stats
+                if (r.status !== 'Class Cancelled' && r.status !== 'Postponed') {
+                    studentMap[uid].totalClasses++;
+                    if (r.status === 'Present' || r.status === 'Late') {
+                        studentMap[uid].presentClasses++;
+                    }
+                }
+                studentMap[uid].subjects.add(r.subject);
+
+                // Keep latest date
+                if (studentMap[uid].lastActive === "Never" || new Date(r.date) > new Date(studentMap[uid].lastActive)) {
+                    studentMap[uid].lastActive = r.date;
+                }
+            });
+
+            // Convert map to array
+            const studentList = Object.values(studentMap).map(s => ({
+                ...s,
+                attendancePercent: s.totalClasses > 0 ? Math.round((s.presentClasses / s.totalClasses) * 100) : 0,
+                subjectCount: s.subjects.size
+            }));
+
+            setStudents(studentList);
 
             // Fetch all public timetables
             const timetablesQuery = query(collection(db, "public_timetables"));
@@ -60,20 +119,76 @@ export default function AdminResponses() {
         setDetailLoading(true);
 
         try {
-            // 1. Fetch Subjects
+            // 1. Fetch ALL Attendance Records for this user
+            const attQ = query(collection(db, "attendance_records"), where("uid", "==", uid));
+            const attSnap = await getDocs(attQ);
+            const userRecords = attSnap.docs.map(d => d.data());
+
+            // 2. Fetch Joined Timetables to see Creator Info
+            const userTimetables = await getUserTimetables(uid);
+
+            // 3. Fetch User's Subjects List (from 'subjects' collection)
             const subQ = query(collection(db, "subjects"), where("uid", "==", uid));
             const subSnap = await getDocs(subQ);
-            const subjects = subSnap.docs.map(d => d.data().name);
+            const userSubjectsList = subSnap.docs.map(d => d.data().name).sort();
 
-            // 2. Fetch Timetable (old system)
-            const ttRef = doc(db, "timetables", uid);
-            const ttSnap = await getDoc(ttRef);
-            const timetable = ttSnap.exists() ? ttSnap.data() : {};
+            // 4. Process Stats
+            let totalPresent = 0;
+            let totalValid = 0;
+            const subjectMap = {}; // { "Math": { present: 0, total: 0 } }
+            const weekMap = {}; // { "2024-W10": { present: 0, total: 0 } }
 
-            // 3. Fetch Recent Attendance
-            const recent = records.filter(r => r.uid === uid).slice(0, 50);
+            // Initialize subject map with user's explicitly added subjects (to ensure 0% subjects appear)
+            userSubjectsList.forEach(subName => {
+                subjectMap[subName] = { present: 0, total: 0 };
+            });
+            // ... (rest of the loop)
+            userRecords.forEach(r => {
+                if (r.status === 'Class Cancelled' || r.status === 'Postponed') return;
 
-            setStudentDetails({ subjects, timetable, recentAttendance: recent });
+                totalValid++;
+                const isPresent = r.status === 'Present' || r.status === 'Late';
+                if (isPresent) totalPresent++;
+
+                // Subject Stats
+                if (!subjectMap[r.subject]) subjectMap[r.subject] = { present: 0, total: 0 };
+                subjectMap[r.subject].total++;
+                if (isPresent) subjectMap[r.subject].present++;
+
+                // Weekly Stats...
+                if (r.date) {
+                    const date = new Date(r.date);
+                    const weekHash = `${date.getFullYear()}-W${Math.ceil((date.getDate() - 1 + new Date(date.getFullYear(), 0, 1).getDay()) / 7)}`;
+                    if (!weekMap[weekHash]) weekMap[weekHash] = { present: 0, total: 0, label: `Week of ${r.date}` };
+                    weekMap[weekHash].total++;
+                    if (isPresent) weekMap[weekHash].present++;
+                }
+            });
+
+            // Format Data
+            const subjectStats = Object.keys(subjectMap).map(sub => ({
+                subject: sub,
+                present: subjectMap[sub].present,
+                total: subjectMap[sub].total,
+                percent: subjectMap[sub].total > 0 ? Math.round((subjectMap[sub].present / subjectMap[sub].total) * 100) : 0
+            })).sort((a, b) => b.percent - a.percent);
+
+            const weeklyStats = Object.values(weekMap).slice(0, 5).map(w => ({
+                label: w.label, // Simplified label
+                percent: Math.round((w.present / w.total) * 100) || 0
+            }));
+
+            setStudentDetails({
+                overallStats: {
+                    present: totalPresent,
+                    total: totalValid,
+                    percent: totalValid > 0 ? Math.round((totalPresent / totalValid) * 100) : 0
+                },
+                subjectStats,
+                subjectsList: userSubjectsList,
+                weeklyStats,
+                timetables: userTimetables
+            });
 
         } catch (err) {
             console.error("Detail Fetch Error", err);
@@ -92,8 +207,9 @@ export default function AdminResponses() {
         setDeleting(true);
         try {
             if (itemToDelete.type === 'response') {
+                // Not supported in user view directly, but keeping logic just in case
                 await deleteDoc(doc(db, "attendance_records", itemToDelete.id));
-                setRecords(prev => prev.filter(r => r.id !== itemToDelete.id));
+                // setRecords... 
             } else if (itemToDelete.type === 'timetable') {
                 await deleteDoc(doc(db, "public_timetables", itemToDelete.id));
                 setTimetables(prev => prev.filter(t => t.id !== itemToDelete.id));
@@ -107,11 +223,12 @@ export default function AdminResponses() {
         setDeleting(false);
     };
 
-    const filteredRecords = records.filter(r => {
-        const matchDate = filterDate ? r.date === filterDate : true;
+    const filteredStudents = students.filter(s => {
         const term = searchTerm.toLowerCase();
+        // Date filter might check "Last Active" or be disabled for user list. Let's filter by Last Active date if set.
+        const matchDate = filterDate ? s.lastActive === filterDate : true;
         const matchSearch = searchTerm
-            ? (r.email?.toLowerCase().includes(term) || r.subject?.toLowerCase().includes(term))
+            ? (s.email?.toLowerCase().includes(term))
             : true;
         return matchDate && matchSearch;
     });
@@ -126,12 +243,19 @@ export default function AdminResponses() {
     });
 
     const exportCSV = () => {
-        const headers = ["Date", "Student Email", "Subject", "Status", "Time Marked"];
-        const rows = filteredRecords.map(r => [r.date, r.email, r.subject, r.status, r.startTime]);
+        const headers = ["Student Email", "Last Active", "Total Classes", "Present", "Attendance %", "Enrolled Subjects"];
+        const rows = filteredStudents.map(s => [
+            s.email,
+            s.lastActive,
+            s.totalClasses,
+            s.presentClasses,
+            s.attendancePercent + '%',
+            Array.from(s.subjects).join('; ')
+        ]);
         const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
         const link = document.createElement("a");
         link.setAttribute("href", encodeURI(csvContent));
-        link.setAttribute("download", "attendance_export.csv");
+        link.setAttribute("download", "students_export.csv");
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -155,130 +279,198 @@ export default function AdminResponses() {
         document.body.removeChild(link);
     };
 
+    // Computed Stats for the Dashboard Cards
+    const stats = useMemo(() => {
+        const totalUsers = students.length;
+        // Average attendance across all users
+        const avgAttendance = totalUsers > 0
+            ? Math.round(students.reduce((acc, curr) => acc + curr.attendancePercent, 0) / totalUsers)
+            : 0;
+
+        return {
+            total: totalUsers,
+            presentPercent: avgAttendance,
+            timetables: timetables.length
+        };
+    }, [students, timetables]);
+
     return (
-        <>
+        <div className="admin-page-wrapper">
             <Navigation />
-            <Container className="pb-5">
-                <div className="d-flex justify-content-between align-items-center mb-4">
-                    <div>
-                        <h2 className="fw-bold d-flex align-items-center gap-2">
-                            <FaUserShield className="text-danger" /> Admin Dashboard
-                        </h2>
-                        <p className="text-muted">Manage all attendance records and timetables.</p>
-                    </div>
-                    <Button
-                        variant="success"
-                        onClick={activeTab === 'responses' ? exportCSV : exportTimetablesCSV}
-                        className="d-flex align-items-center gap-2"
-                    >
-                        <FaFileDownload /> Export CSV
-                    </Button>
-                </div>
+            <Container className="py-4">
+                {/* --- 1. GLASS HEADER & QUICK STATS --- */}
+                <header className="admin-header mb-5 p-4 rounded-4 shadow-sm text-white">
+                    <Row className="align-items-center">
+                        <Col md={6}>
+                            <div className="d-flex align-items-center gap-3">
+                                <div className="admin-icon-box">
+                                    <FaUserShield size={24} />
+                                </div>
+                                <div>
+                                    <h2 className="fw-bold mb-0">Admin Panel</h2>
+                                    <p className="opacity-75 mb-0">System Overview & Management</p>
+                                </div>
+                            </div>
+                        </Col>
+                        <Col md={6} className="text-md-end mt-3 mt-md-0">
+                            <Button variant="light" className="rounded-pill fw-bold px-4 shadow-sm" onClick={activeTab === 'responses' ? exportCSV : exportTimetablesCSV}>
+                                <FaFileDownload className="me-2" /> Export Report
+                            </Button>
+                        </Col>
+                    </Row>
+                </header>
 
+                <Row className="mb-5 g-4">
+                    <Col md={4}>
+                        <div className="admin-stat-card p-4 h-100">
+                            <div className="d-flex justify-content-between">
+                                <div>
+                                    <h6 className="text-muted text-uppercase small">Total Users</h6>
+                                    <h2 className="fw-bold">{stats.total}</h2>
+                                </div>
+                                <div className="stat-icon bg-primary-subtle text-primary"><FaUsers /></div>
+                            </div>
+                            <ProgressBar variant="primary" now={100} className="mt-3" style={{ height: '4px' }} />
+                        </div>
+                    </Col>
+                    <Col md={4}>
+                        <div className="admin-stat-card p-4 h-100">
+                            <div className="d-flex justify-content-between">
+                                <div>
+                                    <h6 className="text-muted text-uppercase small">Avg User Attendance</h6>
+                                    <h2 className="fw-bold">{stats.presentPercent}%</h2>
+                                </div>
+                                <div className="stat-icon bg-success-subtle text-success"><FaCalendarAlt /></div>
+                            </div>
+                            <ProgressBar variant="success" now={stats.presentPercent} className="mt-3" style={{ height: '4px' }} />
+                        </div>
+                    </Col>
+                    <Col md={4}>
+                        <div className="admin-stat-card p-4 h-100">
+                            <div className="d-flex justify-content-between">
+                                <div>
+                                    <h6 className="text-muted text-uppercase small">Active Timetables</h6>
+                                    <h2 className="fw-bold">{stats.timetables}</h2>
+                                </div>
+                                <div className="stat-icon bg-warning-subtle text-warning"><FaBook /></div>
+                            </div>
+                            <ProgressBar variant="warning" now={75} className="mt-3" style={{ height: '4px' }} />
+                        </div>
+                    </Col>
+                </Row>
+
+                {/* --- 2. MAIN CONTENT AREA --- */}
                 <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k)}>
-                    <Nav variant="pills" className="mb-4 bg-light p-2 rounded-pill d-inline-flex">
-                        <Nav.Item>
-                            <Nav.Link eventKey="responses" className="rounded-pill px-4">
-                                Attendance Responses ({records.length})
-                            </Nav.Link>
-                        </Nav.Item>
-                        <Nav.Item>
-                            <Nav.Link eventKey="timetables" className="rounded-pill px-4">
-                                Timetables ({timetables.length})
-                            </Nav.Link>
-                        </Nav.Item>
-                    </Nav>
+                    <div className="admin-tab-container p-2 mb-4">
+                        <Nav variant="pills" className="gap-2">
+                            <Nav.Item>
+                                <Nav.Link eventKey="responses" className="rounded-pill px-4 py-2">Users</Nav.Link>
+                            </Nav.Item>
+                            <Nav.Item>
+                                <Nav.Link eventKey="timetables" className="rounded-pill px-4 py-2">Public Timetables</Nav.Link>
+                            </Nav.Item>
+                        </Nav>
+                    </div>
 
-                    <Card className="border-0 shadow-sm mb-4 bg-surface">
-                        <Card.Body>
-                            <Row className="g-3">
+                    {/* Search & Filter Bar */}
+                    <Card className="border-0 shadow-sm rounded-4 mb-4 overflow-hidden" style={{ background: 'var(--bg-card)' }}>
+                        <div className="p-3 border-bottom" style={{ borderColor: 'var(--border-color)' }}>
+                            <Row className="g-3 align-items-center">
+                                <Col lg={activeTab === 'responses' ? 4 : 8}>
+                                    <div className="search-input-group">
+                                        <FaSearch className="search-icon" />
+                                        <Form.Control
+                                            type="text"
+                                            placeholder="Search anything..."
+                                            value={searchTerm}
+                                            onChange={(e) => setSearchTerm(e.target.value)}
+                                            className="border-0 rounded-pill"
+                                            style={{ background: 'var(--bg-body)', color: 'var(--text-primary)' }}
+                                        />
+                                    </div>
+                                </Col>
                                 {activeTab === 'responses' && (
-                                    <Col md={3}>
-                                        <Form.Group>
-                                            <Form.Label className="small text-muted fw-bold">Filter By Date</Form.Label>
-                                            <Form.Control type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />
-                                        </Form.Group>
+                                    <Col lg={4}>
+                                        <Form.Control
+                                            type="date"
+                                            value={filterDate}
+                                            onChange={(e) => setFilterDate(e.target.value)}
+                                            className="border-0 rounded-pill px-4"
+                                            style={{ background: 'var(--bg-body)', color: 'var(--text-primary)' }}
+                                        />
                                     </Col>
                                 )}
-                                <Col md={activeTab === 'responses' ? 6 : 9}>
-                                    <Form.Group>
-                                        <Form.Label className="small text-muted fw-bold">Search</Form.Label>
-                                        <div className="position-relative">
-                                            <FaSearch className="position-absolute text-muted" style={{ top: '12px', left: '12px' }} />
-                                            <Form.Control
-                                                type="text"
-                                                placeholder={activeTab === 'responses' ? "Search by email or subject..." : "Search by name, code, or creator..."}
-                                                value={searchTerm}
-                                                onChange={(e) => setSearchTerm(e.target.value)}
-                                                className="ps-5"
-                                            />
-                                        </div>
-                                    </Form.Group>
-                                </Col>
-                                <Col md={3} className="d-flex align-items-end">
-                                    <Button variant="outline-secondary" className="w-100" onClick={() => { setFilterDate(""); setSearchTerm("") }}>
-                                        Clear
+                                <Col lg={activeTab === 'responses' ? 4 : 4}>
+                                    <Button variant="outline-secondary" className="w-100 rounded-pill" onClick={() => { setFilterDate(""); setSearchTerm("") }}>
+                                        Reset Filters
                                     </Button>
                                 </Col>
                             </Row>
-                        </Card.Body>
+                        </div>
                     </Card>
 
                     <Tab.Content>
-                        {/* Attendance Responses Tab */}
                         <Tab.Pane eventKey="responses">
-                            <Card className="border-0 shadow-sm overflow-hidden rounded-4">
-                                <Table hover className="mb-0 align-middle">
-                                    <thead className="bg-light text-muted small text-uppercase">
+                            <div className="table-responsive rounded-4 shadow-sm" style={{ background: 'var(--bg-card)' }}>
+                                <Table hover className="admin-table align-middle mb-0" style={{ color: 'var(--text-primary)' }}>
+                                    <thead style={{ background: 'var(--bg-body)' }}>
                                         <tr>
-                                            <th className="py-3 ps-4">Date</th>
-                                            <th className="py-3">Student</th>
-                                            <th className="py-3">Activity</th>
-                                            <th className="py-3 text-center">Status</th>
-                                            <th className="py-3 text-end pe-4">Actions</th>
+                                            <th className="border-0 py-3 ps-4">Student Email</th>
+                                            <th className="border-0 py-3">Performance</th>
+                                            <th className="border-0 py-3">Last Active</th>
+                                            <th className="border-0 py-3 text-end pe-4">Details</th>
                                         </tr>
                                     </thead>
                                     <tbody>
+                                        {/* ... (Keep existing loading/empty logic) ... */}
                                         {loading ? (
-                                            <tr><td colSpan="5" className="text-center py-5"><Spinner animation="border" /></td></tr>
-                                        ) : filteredRecords.length === 0 ? (
-                                            <tr><td colSpan="5" className="text-center py-5 text-muted">No records found</td></tr>
+                                            <tr><td colSpan="4" className="text-center py-5"><Spinner animation="border" /></td></tr>
+                                        ) : filteredStudents.length === 0 ? (
+                                            <tr><td colSpan="4" className="text-center py-5 text-muted">No users found</td></tr>
                                         ) : (
-                                            filteredRecords.map(r => (
-                                                <tr key={r.id}>
-                                                    <td className="ps-4 fw-bold text-dark">{r.date} <span className="fw-normal text-muted small ms-1">{r.startTime}</span></td>
-                                                    <td>
-                                                        <div className="fw-bold text-primary">{r.email}</div>
+                                            filteredStudents.map(s => (
+                                                <tr key={s.uid}>
+                                                    <td className="ps-4">
+                                                        <div className="fw-bold text-primary">{s.email}</div>
+                                                        <small className="text-muted">{s.subjectCount} Subjects Enrolled</small>
                                                     </td>
-                                                    <td><Badge bg="light" text="dark" className="border fw-normal">{r.subject}</Badge></td>
-                                                    <td className="text-center">
-                                                        <Badge bg={r.status === 'Present' ? 'success' : r.status === 'Absent' ? 'danger' : 'warning'} className="rounded-pill px-3">
-                                                            {r.status}
-                                                        </Badge>
+                                                    <td>
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            {s.totalClasses > 0 ? (
+                                                                <>
+                                                                    <ProgressBar
+                                                                        variant={s.attendancePercent >= 75 ? 'success' : s.attendancePercent >= 50 ? 'warning' : 'danger'}
+                                                                        now={s.attendancePercent}
+                                                                        className="flex-grow-1"
+                                                                        style={{ height: '6px', minWidth: '80px' }}
+                                                                    />
+                                                                    <Badge bg={s.attendancePercent >= 75 ? 'success' : s.attendancePercent >= 50 ? 'warning' : 'danger'}>
+                                                                        {s.attendancePercent}%
+                                                                    </Badge>
+                                                                </>
+                                                            ) : (
+                                                                <Badge bg="secondary" className="w-100">No Activity</Badge>
+                                                            )}
+                                                        </div>
+                                                        <small className="text-muted">{s.presentClasses} / {s.totalClasses} Classes</small>
+                                                    </td>
+                                                    <td>
+                                                        <div className="fw-medium" style={{ color: 'var(--text-primary)' }}>{s.lastActive}</div>
                                                     </td>
                                                     <td className="text-end pe-4">
-                                                        <div className="d-flex gap-2 justify-content-end">
-                                                            <Button size="sm" variant="outline-primary" onClick={() => handleViewStudent(r.email, r.uid)}>
-                                                                <FaEye /> View
-                                                            </Button>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline-danger"
-                                                                onClick={() => confirmDelete('response', r.id, `${r.email} - ${r.subject} on ${r.date}`)}
-                                                            >
-                                                                <FaTrash />
-                                                            </Button>
-                                                        </div>
+                                                        <Button variant="light" size="sm" className="rounded-circle" onClick={() => handleViewStudent(s.email, s.uid)}>
+                                                            <FaEye />
+                                                        </Button>
                                                     </td>
                                                 </tr>
                                             ))
                                         )}
                                     </tbody>
                                 </Table>
-                            </Card>
+                            </div>
                         </Tab.Pane>
 
-                        {/* Timetables Tab */}
+                        {/* Timetables Tab - Use Grid for responsiveness */}
                         <Tab.Pane eventKey="timetables">
                             <Row className="g-4">
                                 {loading ? (
@@ -287,53 +479,21 @@ export default function AdminResponses() {
                                     <div className="text-center py-5 text-muted">No timetables found</div>
                                 ) : (
                                     filteredTimetables.map(t => (
-                                        <Col md={6} lg={4} key={t.id}>
-                                            <Card className="h-100 border-0 shadow-sm">
-                                                <Card.Body>
-                                                    <div className="d-flex justify-content-between align-items-start mb-3">
-                                                        <Badge bg="primary" className="rounded-pill px-3 py-2">
-                                                            {t.code}
-                                                        </Badge>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline-danger"
-                                                            className="rounded-circle p-2"
-                                                            onClick={() => confirmDelete('timetable', t.id, t.name)}
-                                                        >
-                                                            <FaTrash size={12} />
-                                                        </Button>
+                                        <Col md={6} xl={4} key={t.id}>
+                                            <Card className="timetable-admin-card border-0 shadow-sm h-100">
+                                                <Card.Body className="p-4">
+                                                    <div className="d-flex justify-content-between mb-3">
+                                                        <Badge bg="primary" className="rounded-pill px-3">{t.code}</Badge>
+                                                        <Button variant="link" className="text-danger p-0" onClick={() => confirmDelete('timetable', t.id, t.name)}><FaTrash /></Button>
                                                     </div>
-
                                                     <h5 className="fw-bold mb-1">{t.name}</h5>
-                                                    <p className="text-muted small mb-3">
-                                                        Created by: <strong>{t.creatorName}</strong>
-                                                    </p>
-
-                                                    <div className="mb-3">
-                                                        <small className="text-muted">Subjects:</small>
-                                                        <div className="d-flex flex-wrap gap-1 mt-1">
-                                                            {(() => {
-                                                                const uniqueSubjects = new Set();
-                                                                Object.values(t.schedule || {}).forEach(day =>
-                                                                    day.forEach(slot => {
-                                                                        if (slot.subject) uniqueSubjects.add(slot.subject);
-                                                                    })
-                                                                );
-                                                                const subjects = Array.from(uniqueSubjects);
-                                                                return subjects.length > 0 ? (
-                                                                    subjects.slice(0, 3).map((sub, i) => (
-                                                                        <Badge key={i} bg="light" text="success" className="border fw-normal">
-                                                                            {sub}
-                                                                        </Badge>
-                                                                    ))
-                                                                ) : <span className="small text-muted fst-italic">No subjects</span>;
-                                                            })()}
+                                                    <p className="text-muted small mb-4">By: {t.creatorName}</p>
+                                                    <div className="d-flex align-items-center justify-content-between mt-auto pt-3 border-top">
+                                                        <div className="d-flex align-items-center gap-2">
+                                                            <div className="member-icons"><FaUsers /></div>
+                                                            <span className="small text-muted">{t.attendees?.length || 0} Members</span>
                                                         </div>
-                                                    </div>
-
-                                                    <div className="d-flex justify-content-between text-muted small border-top pt-3">
-                                                        <span>📅 {Object.keys(t.schedule || {}).length} Days</span>
-                                                        <span>👥 {t.attendees?.length || 0} Members</span>
+                                                        <Button variant="outline-primary" size="sm" className="rounded-pill">Details</Button>
                                                     </div>
                                                 </Card.Body>
                                             </Card>
@@ -344,7 +504,6 @@ export default function AdminResponses() {
                         </Tab.Pane>
                     </Tab.Content>
                 </Tab.Container>
-
                 {/* Student Detail Modal */}
                 <Modal show={showDetail} onHide={() => setShowDetail(false)} size="lg" centered scrollable>
                     <Modal.Header closeButton>
@@ -352,59 +511,108 @@ export default function AdminResponses() {
                             Student Profile: <span className="text-primary">{selectedStudent?.email}</span>
                         </Modal.Title>
                     </Modal.Header>
-                    <Modal.Body className="bg-light">
+                    <Modal.Body style={{ background: 'var(--bg-body)', color: 'var(--text-primary)' }}>
                         {detailLoading ? (
                             <div className="text-center py-5"><Spinner animation="border" /></div>
                         ) : (
-                            <>
-                                <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaBook /> Enrolled Subjects</h6>
-                                <div className="d-flex flex-wrap gap-2 mb-4">
-                                    {studentDetails.subjects.length > 0 ? (
-                                        studentDetails.subjects.map(s => <Badge key={s} bg="white" text="dark" className="border shadow-sm py-2 px-3">{s}</Badge>)
-                                    ) : <span className="text-muted">No subjects enrolled.</span>}
-                                </div>
-
-                                <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaClock /> Weekly Timetable</h6>
-                                <Accordion className="shadow-sm border-0 mb-4 rounded-3 overflow-hidden" flush>
-                                    {Object.keys(studentDetails.timetable).length > 0 ? (
-                                        ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map(day => {
-                                            const classes = studentDetails.timetable[day] || [];
-                                            if (classes.length === 0) return null;
-                                            return (
-                                                <Accordion.Item eventKey={day} key={day}>
-                                                    <Accordion.Header>{day} <Badge bg="light" text="dark" className="ms-2 border">{classes.length} Classes</Badge></Accordion.Header>
-                                                    <Accordion.Body className="bg-white">
-                                                        {classes.map((c, i) => (
-                                                            <div key={i} className="d-flex justify-content-between border-bottom py-2">
-                                                                <span className="fw-bold">{c.subject}</span>
-                                                                <span className="text-muted small">{c.startTime} - {c.endTime}</span>
+                            <div className="d-flex flex-column gap-4">
+                                {/* 1. Overall & Timetable Info */}
+                                <Row className="g-3">
+                                    <Col md={6}>
+                                        <Card className="h-100 border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                                            <Card.Body className="text-center">
+                                                <h6 className="text-muted text-uppercase small fw-bold">Overall Attendance</h6>
+                                                <div className="display-4 fw-bold text-primary my-2">{studentDetails.overallStats.percent}%</div>
+                                                <ProgressBar variant={studentDetails.overallStats.percent >= 75 ? "success" : "warning"} now={studentDetails.overallStats.percent} className="mb-2" style={{ height: '6px' }} />
+                                                <div className="small text-muted">
+                                                    {studentDetails.overallStats.present} / {studentDetails.overallStats.total} Classes Attended
+                                                </div>
+                                            </Card.Body>
+                                        </Card>
+                                    </Col>
+                                    <Col md={6}>
+                                        <Card className="h-100 border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                                            <Card.Body>
+                                                <h6 className="text-muted text-uppercase small fw-bold mb-3">Joined Timetables</h6>
+                                                {studentDetails.timetables.length > 0 ? (
+                                                    <div className="d-flex flex-column gap-2">
+                                                        {studentDetails.timetables.map(t => (
+                                                            <div key={t.id} className="d-flex justify-content-between align-items-center p-2 rounded" style={{ background: 'var(--bg-body)' }}>
+                                                                <div>
+                                                                    <div className="fw-bold">{t.name}</div>
+                                                                    <div className="small text-muted">Code: {t.code}</div>
+                                                                </div>
+                                                                <div className="text-end">
+                                                                    <Badge bg="info" className="text-dark">Creator: {t.creatorName}</Badge>
+                                                                </div>
                                                             </div>
                                                         ))}
-                                                    </Accordion.Body>
-                                                </Accordion.Item>
-                                            );
-                                        })
-                                    ) : <div className="p-3 text-muted bg-white">No timetable set up.</div>}
-                                </Accordion>
+                                                    </div>
+                                                ) : <div className="text-muted small fst-italic">No active timetables found.</div>}
+                                            </Card.Body>
+                                        </Card>
+                                    </Col>
+                                </Row>
 
-                                <h6 className="fw-bold mb-3">Recent Activity Log</h6>
-                                <Card className="border-0 shadow-sm">
-                                    <Table size="sm" className="mb-0 small">
-                                        <thead>
-                                            <tr className="bg-light"><th>Date</th><th>Subject</th><th>Status</th></tr>
-                                        </thead>
-                                        <tbody>
-                                            {studentDetails.recentAttendance.slice(0, 20).map(r => (
-                                                <tr key={r.id}>
-                                                    <td>{r.date}</td>
-                                                    <td>{r.subject}</td>
-                                                    <td>{r.status}</td>
-                                                </tr>
+                                {/* 2. Weekly Performance (Simplified Bar Representation) */}
+                                <div>
+                                    <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaCalendarAlt /> Recent Weekly Performance</h6>
+                                    {studentDetails.weeklyStats.length > 0 ? (
+                                        <div className="d-flex flex-column gap-2">
+                                            {studentDetails.weeklyStats.map((w, idx) => (
+                                                <div key={idx} className="d-flex align-items-center gap-3">
+                                                    <div className="small text-muted" style={{ width: '100px' }}>{w.label}</div>
+                                                    <div className="flex-grow-1">
+                                                        <ProgressBar variant="primary" now={w.percent} label={`${w.percent}%`} style={{ height: '15px' }} />
+                                                    </div>
+                                                </div>
                                             ))}
-                                        </tbody>
-                                    </Table>
-                                </Card>
-                            </>
+                                        </div>
+                                    ) : <div className="text-muted">No weekly data available.</div>}
+                                </div>
+
+                                {/* 3. Subject Stats Breakdown */}
+                                <div>
+                                    <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaBook /> Subject Breakdown</h6>
+                                    <Card className="border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+                                        <Table hover className="mb-0 align-middle" style={{ color: 'var(--text-primary)' }}>
+                                            <thead style={{ background: 'var(--bg-body)' }}>
+                                                <tr>
+                                                    <th className="border-0 ps-3">Subject</th>
+                                                    <th className="border-0 text-center">Attendance</th>
+                                                    <th className="border-0 text-end pe-3">%</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {studentDetails.subjectStats.map((sub, idx) => (
+                                                    <tr key={idx}>
+                                                        <td className="ps-3 fw-medium">{sub.subject}</td>
+                                                        <td className="w-50">
+                                                            <div className="d-flex align-items-center gap-2">
+                                                                <ProgressBar
+                                                                    variant={sub.percent >= 75 ? "success" : sub.percent >= 50 ? "warning" : "danger"}
+                                                                    now={sub.percent}
+                                                                    className="flex-grow-1"
+                                                                    style={{ height: '6px' }}
+                                                                />
+                                                                <small className="text-muted">{sub.present}/{sub.total}</small>
+                                                            </div>
+                                                        </td>
+                                                        <td className="text-end pe-3">
+                                                            <Badge bg={sub.percent >= 75 ? "success" : sub.percent >= 50 ? "warning" : "danger"}>
+                                                                {sub.percent}%
+                                                            </Badge>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                                {studentDetails.subjectStats.length === 0 && (
+                                                    <tr><td colSpan="3" className="text-center py-3 text-muted">No subject data found.</td></tr>
+                                                )}
+                                            </tbody>
+                                        </Table>
+                                    </Card>
+                                </div>
+                            </div>
                         )}
                     </Modal.Body>
                 </Modal>
@@ -449,8 +657,145 @@ export default function AdminResponses() {
                         </Button>
                     </Modal.Footer>
                 </Modal>
-
             </Container>
-        </>
+            <style>
+                {`
+					/* Admin Page General Styles */
+					.admin-page-wrapper {
+					background-color: var(--bg-body);
+					min-height: 100vh;
+                    color: var(--text-primary);
+					}
+
+					.admin-header {
+					background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+					border: none;
+					}
+
+					.admin-icon-box {
+					background: rgba(255, 255, 255, 0.2);
+					padding: 12px;
+					border-radius: 12px;
+					}
+
+					/* Stat Cards */
+					.admin-stat-card {
+					background: var(--bg-card);
+					border: 1px solid var(--border-color);
+					border-radius: 20px;
+					box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+					transition: transform 0.2s;
+                    color: var(--text-primary);
+					}
+
+					.admin-stat-card:hover {
+					transform: translateY(-5px);
+					}
+
+					.stat-icon {
+					width: 48px;
+					height: 48px;
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					border-radius: 12px;
+					font-size: 1.2rem;
+					}
+
+					/* Tab Pills Styling */
+					.admin-tab-container {
+					background: var(--bg-card);
+					border-radius: 50px;
+					width: fit-content;
+					box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+                    border: 1px solid var(--border-color);
+					}
+
+					.admin-tab-container .nav-link {
+					color: var(--text-secondary);
+					font-weight: 600;
+					}
+
+					.admin-tab-container .nav-link.active {
+					background: #4e73df !important;
+                    color: white;
+					box-shadow: 0 4px 10px rgba(78, 115, 223, 0.3);
+					}
+
+					/* Search Bar */
+					.search-input-group {
+					position: relative;
+					}
+
+					.search-icon {
+					position: absolute;
+					left: 15px;
+					top: 50%;
+					transform: translateY(-50%);
+					color: var(--text-secondary);
+					z-index: 5;
+					}
+
+					.search-input-group input {
+					padding-left: 45px;
+					height: 45px;
+					}
+
+					/* Custom Table Styling */
+					.admin-table tbody tr {
+					transition: all 0.2s;
+                    color: var(--text-primary);
+					}
+
+					.admin-table tbody tr:hover {
+					background-color: var(--bg-body) !important;
+					}
+                    
+                    /* Ensure table text is visible in dark mode override */
+                    .admin-table td, .admin-table th {
+                        color: var(--text-primary);
+                        border-color: var(--border-color);
+                    }
+
+					.status-badge {
+					padding: 6px 16px;
+					border-radius: 50px;
+					font-size: 0.75rem;
+					font-weight: 700;
+					text-transform: uppercase;
+					}
+
+					.status-badge.present { background: rgba(0, 141, 116, 0.1); color: #008d74; }
+					.status-badge.absent { background: rgba(229, 62, 62, 0.1); color: #e53e3e; }
+					.status-badge.late { background: rgba(221, 107, 32, 0.1); color: #dd6b20; }
+                    
+                    [data-theme='dark'] .status-badge.present { background: rgba(0, 141, 116, 0.2); color: #4fd1c5; }
+					[data-theme='dark'] .status-badge.absent { background: rgba(229, 62, 62, 0.2); color: #fc8181; }
+					[data-theme='dark'] .status-badge.late { background: rgba(221, 107, 32, 0.2); color: #f6ad55; }
+
+
+					/* Timetable Cards */
+					.timetable-admin-card {
+					transition: all 0.3s ease;
+					border-radius: 20px;
+                    background: var(--bg-card);
+                    color: var(--text-primary);
+                    border: 1px solid var(--border-color);
+					}
+
+					.timetable-admin-card:hover {
+					box-shadow: 0 10px 30px rgba(0,0,0,0.1) !important;
+					}
+
+					/* Responsive Overrides */
+					@media (max-width: 768px) {
+					.admin-header { text-align: center; }
+					.admin-icon-box { display: none; }
+					.admin-tab-container { width: 100%; display: flex; }
+					.admin-tab-container .nav-item { flex: 1; }
+					}
+				`}
+            </style>
+        </div>
     );
 }

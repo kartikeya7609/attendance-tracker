@@ -58,7 +58,7 @@ export const joinTimetable = async (uid, code) => {
     const joinRef = doc(db, "users", uid, "joined_timetables", timetableId);
     const joinSnap = await getDoc(joinRef);
 
-    if (!joinSnap.exists()) {
+    if (!joinSnap.exists() || (joinSnap.exists() && joinSnap.data().deleted)) {
         await setDoc(joinRef, {
             timetableId: timetableId,
             code: code,

@@ -4,9 +4,11 @@ import { Container, Button, Form, Modal, Alert, Row, Col, Card, ProgressBar, Spi
 import Navigation from "../components/Navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../services/firebase";
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, writeBatch } from "firebase/firestore";
-import { FaTrash, FaPlus, FaBook, FaChartBar, FaExclamationTriangle, FaSync, FaClock, FaSignOutAlt, FaUsers } from "react-icons/fa";
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc, writeBatch, updateDoc, Timestamp } from "firebase/firestore";
+import { FaTrash, FaPlus, FaBook, FaChartBar, FaExclamationTriangle, FaSync, FaClock, FaSignOutAlt, FaUsers, FaEdit } from "react-icons/fa";
 import { getUserTimetables, leaveTimetable } from "../services/timetableService";
+import SubjectDetailsModal from "../components/SubjectDetailsModal";
+import AttendanceModal from "../components/AttendanceModal";
 
 
 export default function Subjects() {
@@ -24,6 +26,14 @@ export default function Subjects() {
     const [error, setError] = useState("");
     const [confirmText, setConfirmText] = useState("");
     const [joinedTimetables, setJoinedTimetables] = useState([]);
+
+    // New State for Details/Edit
+    const [attendanceRecords, setAttendanceRecords] = useState([]);
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [selectedSubject, setSelectedSubject] = useState(null);
+    const [showAttendanceModal, setShowAttendanceModal] = useState(false);
+    const [modalClassData, setModalClassData] = useState(null);
+    const [allSubjectsList, setAllSubjectsList] = useState([]);
 
     useEffect(() => {
         fetchData();
@@ -69,10 +79,13 @@ export default function Subjects() {
                 }
             }
             setSubjects(subList);
+            setAllSubjectsList(subList.map(s => s.name).sort());
 
             // 4. Fetch Attendance Records to calculate stats
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
             const attSnap = await getDocs(attQ);
+            const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setAttendanceRecords(records);
 
             const stats = {};
 
@@ -201,6 +214,52 @@ export default function Subjects() {
         return 'danger';
     };
 
+    // --- New Handlers ---
+
+    const handleSubjectClick = (subjectName) => {
+        setSelectedSubject(subjectName);
+        setShowDetailsModal(true);
+    };
+
+    const handleEditFromDetails = (record) => {
+        setModalClassData({
+            subject: record.subject,
+            startTime: record.startTime,
+            endTime: record.endTime || '00:00',
+            timetableId: 'details_edit',
+            timetableCode: 'EDIT',
+            date: record.date,
+            existingRecordId: record.id,
+            currentStatus: record.status
+        });
+        setShowAttendanceModal(true);
+    };
+
+    const handleSaveRecord = async (recordData) => {
+        try {
+            const fullRecord = {
+                uid: currentUser.uid,
+                email: currentUser.email,
+                timestamp: Timestamp.now(),
+                ...recordData
+            };
+
+            if (recordData.existingRecordId) {
+                const recordRef = doc(db, "attendance_records", recordData.existingRecordId);
+                const { existingRecordId, ...updateData } = fullRecord;
+                await updateDoc(recordRef, updateData);
+            } else {
+                await addDoc(collection(db, "attendance_records"), fullRecord);
+            }
+
+            await fetchData(); // Reload all data
+            setShowAttendanceModal(false);
+        } catch (error) {
+            console.error('❌ Failed to save attendance:', error);
+            alert("Failed to save attendance.");
+        }
+    };
+
     return (
         <>
             <Navigation />
@@ -248,14 +307,23 @@ export default function Subjects() {
 
                             return (
                                 <Col md={6} lg={4} key={sub.id}>
-                                    <Card className="border-0 shadow-sm h-100">
+                                    <Card
+                                        className="border-0 shadow-sm h-100 hover-card"
+                                        style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                                        onClick={() => handleSubjectClick(sub.name)}
+                                    >
                                         <Card.Body className="d-flex flex-column">
                                             <div className="d-flex justify-content-between align-items-start mb-3">
                                                 <div className="fw-bold fs-5 text-truncate pe-2" title={sub.name}>
                                                     {sub.name}
                                                     {sub.autoAdded && <Badge bg="success" className="ms-2 small">Auto</Badge>}
                                                 </div>
-                                                <Button variant="light" size="sm" className="text-danger rounded-circle p-2" onClick={() => handleDelete(sub.id)}>
+                                                <Button
+                                                    variant="light"
+                                                    size="sm"
+                                                    className="text-danger rounded-circle p-2"
+                                                    onClick={(e) => { e.stopPropagation(); handleDelete(sub.id); }}
+                                                >
                                                     <FaTrash size={12} />
                                                 </Button>
                                             </div>
@@ -503,7 +571,32 @@ export default function Subjects() {
                     </Modal.Footer>
                 </Modal>
 
+                <SubjectDetailsModal
+                    show={showDetailsModal}
+                    onHide={() => setShowDetailsModal(false)}
+                    subject={selectedSubject}
+                    attendanceRecords={attendanceRecords}
+                    timetables={joinedTimetables}
+                    onEditRecord={handleEditFromDetails}
+                />
+
+                <AttendanceModal
+                    show={showAttendanceModal}
+                    onHide={() => setShowAttendanceModal(false)}
+                    classData={modalClassData}
+                    subjects={allSubjectsList}
+                    onSave={handleSaveRecord}
+                />
             </Container>
+
+            <style>
+                {`
+                    .hover-card:hover {
+                        transform: translateY(-5px);
+                        transition: transform 0.2s ease-in-out;
+                    }
+                `}
+            </style>
         </>
     );
 }

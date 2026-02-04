@@ -8,6 +8,7 @@ import { getUserTimetables } from "../services/timetableService";
 import { collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { format, startOfWeek, endOfWeek, isSameDay, addDays, subDays } from "date-fns";
 import { FaChartPie, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationTriangle, FaChevronLeft, FaChevronRight, FaEdit } from "react-icons/fa";
+import SubjectDetailsModal from "../components/SubjectDetailsModal";
 
 export default function Dashboard() {
     const { currentUser } = useAuth();
@@ -19,6 +20,8 @@ export default function Dashboard() {
     // Modal State
     const [showModal, setShowModal] = useState(false);
     const [modalClassData, setModalClassData] = useState(null); // If null, it's an extra class
+    const [showDetailsModal, setShowDetailsModal] = useState(false);
+    const [selectedSubject, setSelectedSubject] = useState(null);
 
     // Data
     const [joinedTimetables, setJoinedTimetables] = useState([]);
@@ -30,6 +33,7 @@ export default function Dashboard() {
 
     // Stats
     const [stats, setStats] = useState({ present: 0, total: 0, percentage: 0 });
+    const [allSubjects, setAllSubjects] = useState([]);
 
     useEffect(() => {
         // Clock tick
@@ -83,6 +87,12 @@ export default function Dashboard() {
                 total: valid.length,
                 percentage: valid.length > 0 ? Math.round((present / valid.length) * 100) : 0
             });
+
+            // 4. Fetch All Subjects (for Extra Class dropdown)
+            const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
+            const subSnap = await getDocs(subQ);
+            const subjectsList = subSnap.docs.map(d => d.data().name).sort();
+            setAllSubjects(subjectsList);
 
         } catch (error) {
             console.error("Dashboard Load Error:", error);
@@ -192,17 +202,7 @@ export default function Dashboard() {
         }
     };
 
-    const getUniqueSubjects = () => {
-        const subs = new Set();
-        joinedTimetables.forEach(t => {
-            Object.values(t.schedule || {}).forEach(day =>
-                day.forEach(c => {
-                    if (c.subject) subs.add(c.subject);
-                })
-            );
-        });
-        return Array.from(subs).sort();
-    };
+
 
     const getExtraClassesForDay = () => {
         const dateStr = format(viewDate, 'yyyy-MM-dd');
@@ -213,6 +213,22 @@ export default function Dashboard() {
     };
 
     const currentDayRecord = (cls) => getRecord(cls);
+
+    const handleSubjectClick = (subjectName) => {
+        setSelectedSubject(subjectName);
+        setShowDetailsModal(true);
+    };
+
+    const handleEditFromDetails = (record) => {
+        const pseudoCls = {
+            subject: record.subject,
+            startTime: record.startTime,
+            endTime: record.endTime,
+            timetableId: 'details_edit',
+            timetableCode: 'EDIT'
+        };
+        openEditModal(pseudoCls, record);
+    };
 
     return (
         <>
@@ -302,7 +318,12 @@ export default function Dashboard() {
                             const canMark = !isMarked && (status === 'ongoing' || status === 'past_open');
 
                             return (
-                                <Card key={idx} className={`border-0 shadow-sm ${status === 'ongoing' ? 'border-start border-5 border-success' : ''}`}>
+                                <Card
+                                    key={idx}
+                                    className={`border-0 shadow-sm ${status === 'ongoing' ? 'border-start border-5 border-success' : ''} cursor-pointer hover-card`}
+                                    style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
+                                    onClick={() => handleSubjectClick(cls.subject)}
+                                >
                                     <Card.Body className="p-4">
                                         <Row className="align-items-center">
                                             <Col md={3} className="text-center text-md-start mb-3 mb-md-0 border-end-md">
@@ -330,7 +351,7 @@ export default function Dashboard() {
                                                             variant="outline-secondary"
                                                             size="sm"
                                                             className="rounded-pill"
-                                                            onClick={() => openEditModal(cls, record)}
+                                                            onClick={(e) => { e.stopPropagation(); openEditModal(cls, record); }}
                                                             title="Update attendance"
                                                         >
                                                             <FaEdit />
@@ -342,7 +363,7 @@ export default function Dashboard() {
                                                             <Button
                                                                 variant="outline-primary"
                                                                 className="px-4 rounded-pill fw-bold"
-                                                                onClick={() => openMarkModal(cls)}
+                                                                onClick={(e) => { e.stopPropagation(); openMarkModal(cls); }}
                                                             >
                                                                 Mark Status
                                                             </Button>
@@ -395,7 +416,7 @@ export default function Dashboard() {
                                                     <Col md={4} className="text-center text-md-end">
                                                         <div className="d-flex align-items-center justify-content-end gap-2 flex-wrap">
                                                             <div className={`d-inline-flex align-items-center gap-2 px-3 py-2 rounded-pill bg-${(extra.status === 'Present' || extra.status === 'Late') ? 'success' :
-                                                                    (extra.status === 'Absent') ? 'danger' : 'secondary'
+                                                                (extra.status === 'Absent') ? 'danger' : 'secondary'
                                                                 }-subtle text-${(extra.status === 'Present' || extra.status === 'Late') ? 'success' :
                                                                     (extra.status === 'Absent') ? 'danger' : 'secondary'
                                                                 }`}>
@@ -435,14 +456,27 @@ export default function Dashboard() {
                 show={showModal}
                 onHide={() => setShowModal(false)}
                 classData={modalClassData}
-                subjects={getUniqueSubjects()}
+                subjects={allSubjects}
                 onSave={handleSaveRecord}
+            />
+
+            <SubjectDetailsModal
+                show={showDetailsModal}
+                onHide={() => setShowDetailsModal(false)}
+                subject={selectedSubject}
+                attendanceRecords={attendanceRecords}
+                timetables={joinedTimetables}
+                onEditRecord={handleEditFromDetails}
             />
 
             <style>
                 {`
                     .animate-pulse {
                         animation: pulse 2s infinite;
+                    }
+                    .hover-card:hover {
+                        transform: translateY(-5px);
+                        transition: transform 0.2s ease-in-out;
                     }
                     @keyframes pulse {
                         0% { opacity: 1; }

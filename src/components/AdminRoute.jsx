@@ -8,7 +8,7 @@ export default function AdminRoute({ children }) {
     const { currentUser, logout } = useAuth();
 
     // Replace this with the actual creator's email
-    const CREATOR_EMAIL = "kartikeyakotha6@gmail.com";
+    const CREATOR_EMAIL = "kartikeyakk2007@gmail.com";
 
     if (!currentUser) {
         return <Navigate to="/login" />
