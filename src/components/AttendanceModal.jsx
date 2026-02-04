@@ -8,6 +8,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
 
     const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [subject, setSubject] = useState("");
+    const [topic, setTopic] = useState(""); // New State for Topic
     const [status, setStatus] = useState("Present");
     const [startTime, setStartTime] = useState(format(new Date(), 'HH:mm'));
     const [endTime, setEndTime] = useState(format(new Date(), 'HH:mm'));
@@ -19,6 +20,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                 // Regular Schedule Mode or Edit Mode
                 setDate(classData.date || format(new Date(), 'yyyy-MM-dd'));
                 setSubject(classData.subject || "");
+                setTopic(classData.topic || ""); // Load existing topic if editing
                 setStartTime(classData.startTime || format(new Date(), 'HH:mm'));
                 setEndTime(classData.endTime || format(new Date(), 'HH:mm'));
 
@@ -36,6 +38,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                 // Extra Class Mode
                 setDate(format(new Date(), 'yyyy-MM-dd'));
                 setSubject(subjects.length > 0 ? subjects[0] : "");
+                setTopic("");
                 setStatus("Present");
                 setStartTime(format(new Date(), 'HH:mm'));
                 setEndTime(format(new Date(), 'HH:mm'));
@@ -54,6 +57,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
         const record = {
             date: date,
             subject: subject,
+            topic: topic.trim(), // Include topic in record
             status: status,
             startTime: startTime,
             endTime: endTime,
@@ -148,6 +152,17 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                             </Col>
                         </Row>
                     )}
+
+                    {/* Topic / Syllabus Input (New Feature) */}
+                    <Form.Group className="mb-4">
+                        <Form.Label className="small text-muted fw-bold">Topic / Syllabus Covered (Optional)</Form.Label>
+                        <Form.Control
+                            type="text"
+                            placeholder="e.g. Integration Part 2"
+                            value={topic}
+                            onChange={(e) => setTopic(e.target.value)}
+                        />
+                    </Form.Group>
 
                     {/* Status Selection */}
                     <Form.Group className="mb-4">

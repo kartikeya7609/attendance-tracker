@@ -102,22 +102,24 @@ export default function Dashboard() {
 
     const getRecord = (cls) => {
         const dateStr = format(viewDate, 'yyyy-MM-dd');
-        const found = attendanceRecords.find(r =>
-            r.date === dateStr &&
-            r.subject === cls.subject &&
-            r.startTime === cls.startTime
-        );
+
+        // Robust matching: trim and lowercase subject, trim startTime
+        const targetSubject = cls.subject.trim().toLowerCase();
+        const targetStart = cls.startTime.trim();
+
+        const found = attendanceRecords.find(r => {
+            const recordDate = r.date;
+            const recordSubject = r.subject.trim().toLowerCase();
+            const recordStart = r.startTime.trim();
+
+            return recordDate === dateStr &&
+                recordSubject === targetSubject &&
+                recordStart === targetStart;
+        });
 
         if (!found && attendanceRecords.length > 0) {
-            console.log('🔍 Looking for record:', { date: dateStr, subject: cls.subject, startTime: cls.startTime });
-            console.log('📊 Available records for', cls.subject, ':',
-                attendanceRecords.filter(r => r.subject === cls.subject).map(r => ({
-                    date: r.date,
-                    subject: r.subject,
-                    startTime: r.startTime,
-                    status: r.status
-                }))
-            );
+            // Optional: Debug log only if needed
+            // console.log('🔍 No match found for:', { date: dateStr, subject: cls.subject });
         }
 
         return found;
@@ -166,7 +168,8 @@ export default function Dashboard() {
             ...cls,
             date: format(viewDate, 'yyyy-MM-dd'),
             existingRecordId: existingRecord.id,
-            currentStatus: existingRecord.status
+            currentStatus: existingRecord.status,
+            topic: existingRecord.topic || "" // Pass topic to modal
         });
         setShowModal(true);
     };
@@ -230,10 +233,65 @@ export default function Dashboard() {
         openEditModal(pseudoCls, record);
     };
 
+    // --- Feature: Smart Notifications (Unmarked Recent Classes) ---
+    const pendingClasses = dailySchedule.filter(cls => {
+        const status = getClassStatus(cls);
+        const record = currentDayRecord(cls);
+        return !record && (status === 'past_open' || status === 'ongoing');
+    }).slice(0, 1); // Show only the most relevant one to avoid clutter
+
+    // --- Feature: Global Heatmap Data ---
+    const heatmapData = (() => {
+        const days = [];
+        const today = new Date();
+        for (let i = 29; i >= 0; i--) {
+            const d = subDays(today, i);
+            const dateStr = format(d, 'yyyy-MM-dd');
+            // Find records for this day
+            const dayRecords = attendanceRecords.filter(r => r.date === dateStr);
+            let intensity = 0; // 0: No data, 1: Low, 2: Med, 3: High
+
+            if (dayRecords.length > 0) {
+                const presentCount = dayRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
+                const ratio = presentCount / dayRecords.length;
+                if (ratio === 1) intensity = 3;
+                else if (ratio >= 0.5) intensity = 2;
+                else intensity = 1;
+
+                // Special case: If all absent
+                if (presentCount === 0) intensity = 4; // Red
+            }
+
+            days.push({ date: d, intensity });
+        }
+        return days;
+    })();
+
     return (
         <>
             <Navigation />
             <Container className="pb-5">
+
+
+
+                {/* --- Smart Notification Card --- */}
+                {pendingClasses.length > 0 && (
+                    <div className="d-flex align-items-center justify-content-between shadow-sm border-0 bg-surface border-start border-5 border-info mb-4 p-3 rounded-3">
+                        <div className="d-flex align-items-center gap-3">
+                            <div className="p-2 bg-info bg-opacity-10 rounded-circle text-info">
+                                <FaClock size={20} />
+                            </div>
+                            <div>
+                                <h6 className="fw-bold mb-0 text-body">Did you attend {pendingClasses[0].subject}?</h6>
+                                <p className="mb-0 small text-muted">Class ended recently ({pendingClasses[0].endTime})</p>
+                            </div>
+                        </div>
+                        <div className="d-flex gap-2">
+                            <Button size="sm" variant="success" className="rounded-pill px-3" onClick={() => openMarkModal(pendingClasses[0])}>Yes</Button>
+                            <Button size="sm" variant="outline-secondary" className="rounded-pill px-3">No</Button>
+                        </div>
+                    </div>
+                )}
 
                 {/* Header Stats */}
                 <Row className="mb-4 g-3">
@@ -311,8 +369,11 @@ export default function Dashboard() {
 
                             let statusBadge = <Badge bg="secondary">Upcoming</Badge>;
                             if (status === 'ongoing') statusBadge = <Badge bg="success" className="animate-pulse">Ongoing</Badge>;
-                            if (status === 'past_open') statusBadge = <Badge bg="warning" text="dark">Unmarked</Badge>;
-                            if (status === 'completed') statusBadge = <Badge bg="dark">Finished</Badge>;
+                            if (status === 'past_open') {
+                                statusBadge = isMarked
+                                    ? <Badge bg="secondary">Finished</Badge>
+                                    : <Badge bg="warning" text="dark">Unmarked</Badge>;
+                            }
                             if (status === 'future_locked') statusBadge = <Badge bg="light" text="muted" className="border">Locked</Badge>;
 
                             const canMark = !isMarked && (status === 'ongoing' || status === 'past_open');
@@ -450,6 +511,33 @@ export default function Dashboard() {
                         </>
                     );
                 })()}
+
+                {/* --- Global Heatmap --- */}
+                <div className="mt-5 pt-4 border-top">
+                    <h5 className="fw-bold mb-3 d-flex align-items-center gap-2">
+                        <FaChartPie className="text-primary" /> Attendance Heatmap (Last 30 Days)
+                    </h5>
+                    <Card className="border-0 shadow-sm">
+                        <Card.Body>
+                            <div className="d-flex justify-content-center flex-wrap gap-1">
+                                {heatmapData.map((day, idx) => (
+                                    <div
+                                        key={idx}
+                                        className={`heatmap-box intensity-${day.intensity}`}
+                                        title={`${format(day.date, 'MMM d')}: ${day.intensity === 0 ? 'No Data' : day.intensity === 4 ? 'Absent' : 'Present'}`}
+                                    ></div>
+                                ))}
+                            </div>
+                            <div className="d-flex justify-content-center gap-3 mt-3 small text-muted">
+                                <div className="d-flex align-items-center gap-1"><div className="heatmap-box intensity-0" style={{ width: 12, height: 12 }}></div> No Data</div>
+                                <div className="d-flex align-items-center gap-1"><div className="heatmap-box intensity-4" style={{ width: 12, height: 12 }}></div> All Absent</div>
+                                <div className="d-flex align-items-center gap-1"><div className="heatmap-box intensity-2" style={{ width: 12, height: 12 }}></div> Mixed</div>
+                                <div className="d-flex align-items-center gap-1"><div className="heatmap-box intensity-3" style={{ width: 12, height: 12 }}></div> 100% Present</div>
+                            </div>
+                        </Card.Body>
+                    </Card>
+                </div>
+
             </Container>
 
             <AttendanceModal
@@ -483,6 +571,21 @@ export default function Dashboard() {
                         50% { opacity: 0.5; }
                         100% { opacity: 1; }
                     }
+
+                    /* Heatmap Styles */
+                    .heatmap-box {
+                        width: 24px;
+                        height: 24px;
+                        border-radius: 6px;
+                        background-color: #f1f3f5; /* Default 0 */
+                        transition: all 0.2s;
+                    }
+                    .heatmap-box:hover { transform: scale(1.2); }
+                    .intensity-0 { background-color: #f1f3f5; }
+                    .intensity-1 { background-color: #fff3cd; } /* Low */
+                    .intensity-2 { background-color: #ffe69c; } /* Med */
+                    .intensity-3 { background-color: #198754; } /* High (Green) */
+                    .intensity-4 { background-color: #dc3545; } /* Red (All Absent) */
                 `}
             </style>
         </>

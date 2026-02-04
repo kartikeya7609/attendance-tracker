@@ -25,6 +25,41 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
         };
     }, [records]);
 
+    // Safety Net Calculation (Bunking Budget)
+    const bunkBudget = useMemo(() => {
+        const targetPercent = 75;
+        const currentPercent = stats.percentage;
+        const { present, total } = stats;
+
+        if (currentPercent >= targetPercent) {
+            // How many can I skip?
+            // (present) / (total + x) >= 0.75
+            // present >= 0.75*total + 0.75*x
+            // present - 0.75*total >= 0.75*x
+            // (present - 0.75*total) / 0.75 >= x
+            // x <= (present/0.75) - total
+            const safeSkips = Math.floor(present / 0.75) - total;
+            return {
+                status: 'safe',
+                count: safeSkips,
+                message: `You can safely skip ${safeSkips} more classes while staying above ${targetPercent}%.`
+            };
+        } else {
+            // How many must I attend?
+            // (present + x) / (total + x) >= 0.75
+            // present + x >= 0.75*total + 0.75*x
+            // 0.25*x >= 0.75*total - present
+            // x >= (0.75*total - present) / 0.25
+            // OR simply: x = 3 * total - 4 * present
+            const needed = Math.ceil((0.75 * total - present) / 0.25);
+            return {
+                status: 'danger',
+                count: needed,
+                message: `You must attend the next ${needed} classes to reach ${targetPercent}%.`
+            };
+        }
+    }, [stats]);
+
     // Trend Data (Last 3 Months)
     const trendData = useMemo(() => {
         const months = [2, 1, 0].map(m => format(subMonths(new Date(), m), 'MMM'));
@@ -102,6 +137,28 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                 </div>
                             </Col>
 
+                            {/* Safety Net Card */}
+                            <Col xs={12}>
+                                <div className={`stat-card p-4 border-start border-5 ${bunkBudget.status === 'safe' ? 'border-success' : 'border-danger'}`}>
+                                    <h6 className="fw-bold mb-2 d-flex align-items-center gap-2">
+                                        <FaCheckCircle className={bunkBudget.status === 'safe' ? 'text-success' : 'text-danger'} />
+                                        Attendance Safety Net
+                                    </h6>
+                                    <p className="mb-0 fs-5 fw-medium">
+                                        {bunkBudget.status === 'safe' ? (
+                                            <>
+                                                You can skip <span className="text-success fw-bold">{bunkBudget.count}</span> more classes.
+                                            </>
+                                        ) : (
+                                            <>
+                                                Attend next <span className="text-danger fw-bold">{bunkBudget.count}</span> classes.
+                                            </>
+                                        )}
+                                    </p>
+                                    <small className="text-muted d-block mt-1">{bunkBudget.message}</small>
+                                </div>
+                            </Col>
+
                             {/* Horizontal History Scroll */}
                             <Col xs={12}>
                                 <h6 className="fw-bold text-muted mb-3 d-flex align-items-center gap-2">
@@ -113,7 +170,10 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                             <div className={`status-dot ${record.status.toLowerCase().replace(' ', '-')}`}></div>
                                             <div className="me-auto">
                                                 <div className="fw-bold small">{format(new Date(record.date), 'MMM d')}</div>
-                                                <div className="text-muted" style={{ fontSize: '0.7rem' }}>{record.status}</div>
+                                                <div className="text-muted" style={{ fontSize: '0.7rem' }}>
+                                                    {record.status}
+                                                    {record.topic && <span className="d-block text-primary text-truncate" style={{ maxWidth: '120px' }}>{record.topic}</span>}
+                                                </div>
                                             </div>
                                             <Button variant="link" size="sm" onClick={() => onEditRecord(record)} className="p-0 ms-2">
                                                 <FaEdit />

@@ -230,7 +230,8 @@ export default function Subjects() {
             timetableCode: 'EDIT',
             date: record.date,
             existingRecordId: record.id,
-            currentStatus: record.status
+            currentStatus: record.status,
+            topic: record.topic || "" // Pass topic to modal
         });
         setShowAttendanceModal(true);
     };
