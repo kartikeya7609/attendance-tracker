@@ -7,7 +7,7 @@ import AttendanceModal from "../components/AttendanceModal";
 import { getUserTimetables } from "../services/timetableService";
 import { collection, addDoc, query, where, getDocs, Timestamp, doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { format, startOfWeek, endOfWeek, isSameDay, addDays, subDays } from "date-fns";
-import { FaChartPie, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationTriangle, FaChevronLeft, FaChevronRight, FaEdit } from "react-icons/fa";
+import { FaChartPie, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationTriangle, FaChevronLeft, FaChevronRight, FaEdit, FaCalendarDay } from "react-icons/fa";
 import SubjectDetailsModal from "../components/SubjectDetailsModal";
 
 export default function Dashboard() {
@@ -334,9 +334,25 @@ export default function Dashboard() {
                     <Col xs={12} md={8}>
                         <div className="d-flex align-items-center justify-content-between bg-surface p-3 rounded-4 shadow-sm h-100">
                             <Button variant="light" className="rounded-circle border" onClick={() => setViewDate(subDays(viewDate, 1))}><FaChevronLeft /></Button>
-                            <div className="text-center">
-                                <h5 className="fw-bold mb-0">{isSameDay(viewDate, new Date()) ? "Today's Schedule" : format(viewDate, 'EEEE, MMM do')}</h5>
+
+                            <div className="d-flex align-items-center gap-2">
+                                <Form.Control
+                                    type="date"
+                                    value={format(viewDate, 'yyyy-MM-dd')}
+                                    onChange={(e) => {
+                                        if (e.target.value) setViewDate(new Date(e.target.value));
+                                    }}
+                                    className="d-none" // Hidden input, triggered by label/icon
+                                    id="date-picker-nav"
+                                />
+                                <div className="text-center cursor-pointer" onClick={() => document.getElementById('date-picker-nav').showPicker()} style={{ cursor: 'pointer' }}>
+                                    <h5 className="fw-bold mb-0 d-flex align-items-center gap-2 justify-content-center">
+                                        <FaCalendarDay size={18} className="text-primary" />
+                                        {isSameDay(viewDate, new Date()) ? "Today's Schedule" : format(viewDate, 'EEEE, MMM do')}
+                                    </h5>
+                                </div>
                             </div>
+
                             <Button variant="light" className="rounded-circle border" onClick={() => setViewDate(addDays(viewDate, 1))}><FaChevronRight /></Button>
                         </div>
                     </Col>
@@ -525,6 +541,8 @@ export default function Dashboard() {
                                         key={idx}
                                         className={`heatmap-box intensity-${day.intensity}`}
                                         title={`${format(day.date, 'MMM d')}: ${day.intensity === 0 ? 'No Data' : day.intensity === 4 ? 'Absent' : 'Present'}`}
+                                        onClick={() => setViewDate(day.date)}
+                                        style={{ cursor: 'pointer' }}
                                     ></div>
                                 ))}
                             </div>
