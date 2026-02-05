@@ -282,14 +282,20 @@ export default function AdminResponses() {
     // Computed Stats for the Dashboard Cards
     const stats = useMemo(() => {
         const totalUsers = students.length;
-        // Average attendance across all users
-        const avgAttendance = totalUsers > 0
-            ? Math.round(students.reduce((acc, curr) => acc + curr.attendancePercent, 0) / totalUsers)
+
+        // Global Attendance: Sum of all attended / Sum of all held
+        const totalHeld = students.reduce((acc, curr) => acc + curr.totalClasses, 0);
+        const totalPresent = students.reduce((acc, curr) => acc + curr.presentClasses, 0);
+
+        const avgAttendance = totalHeld > 0
+            ? Math.round((totalPresent / totalHeld) * 100)
             : 0;
 
         return {
             total: totalUsers,
             presentPercent: avgAttendance,
+            totalHeld,
+            totalPresent,
             timetables: timetables.length
         };
     }, [students, timetables]);
@@ -337,8 +343,11 @@ export default function AdminResponses() {
                         <div className="admin-stat-card p-4 h-100">
                             <div className="d-flex justify-content-between">
                                 <div>
-                                    <h6 className="text-muted text-uppercase small">Avg User Attendance</h6>
+                                    <h6 className="text-muted text-uppercase small">Global Attendance</h6>
                                     <h2 className="fw-bold">{stats.presentPercent}%</h2>
+                                    <div className="small text-muted fw-bold">
+                                        {stats.totalPresent} / {stats.totalHeld} Classes
+                                    </div>
                                 </div>
                                 <div className="stat-icon bg-success-subtle text-success"><FaCalendarAlt /></div>
                             </div>

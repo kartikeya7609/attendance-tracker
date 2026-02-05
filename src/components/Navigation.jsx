@@ -143,7 +143,7 @@ export default function Navigation() {
                         <Nav.Link as={Link} to="/history" active={location.pathname === '/history'} className="d-flex align-items-center gap-2 rounded-pill px-3">
                             <FaHistory /> History
                         </Nav.Link>
-                        {currentUser && currentUser.email === '24U123@gmail.com' && (
+                        {currentUser && (currentUser.email === '24U123@gmail.com' || currentUser.email === 'kartikeyakk2007@gmail.com') && (
                             <Nav.Link as={Link} to="/admin/responses" active={location.pathname === '/admin/responses'} className="d-flex align-items-center gap-2 rounded-pill px-3 text-danger fw-bold">
                                 <FaUserShield /> Admin
                             </Nav.Link>

@@ -14,7 +14,13 @@ export default function AdminRoute({ children }) {
         return <Navigate to="/login" />
     }
 
-    if (currentUser.email !== CREATOR_EMAIL) {
+    const ADMIN_EMAILS = ["kartikeyakk2007@gmail.com", "kartikeyakotha6@gmail.com"];
+
+    if (!currentUser) {
+        return <Navigate to="/login" />
+    }
+
+    if (!ADMIN_EMAILS.includes(currentUser.email)) {
         return (
             <Container className="d-flex flex-column align-items-center justify-content-center" style={{ minHeight: "80vh" }}>
                 <div className="text-center">

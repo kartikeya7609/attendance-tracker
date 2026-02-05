@@ -4,6 +4,8 @@ import { Form, Button, Card, Alert, Container, Spinner } from "react-bootstrap";
 import { useAuth } from "../contexts/AuthContext";
 import { Link, useNavigate } from "react-router-dom";
 import { FaSignInAlt, FaGoogle } from "react-icons/fa";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+import { db } from "../services/firebase";
 
 export default function Login() {
     const emailRef = useRef();
@@ -31,7 +33,18 @@ export default function Login() {
         try {
             setError("");
             setLoading(true);
-            await loginWithGoogle();
+            const result = await loginWithGoogle();
+            const user = result.user;
+
+            // Save user to Firestore to ensure they show up in Admin Panel
+            await setDoc(doc(db, "users", user.uid), {
+                email: user.email,
+                displayName: user.displayName || "",
+                photoURL: user.photoURL || "",
+                lastLogin: serverTimestamp(),
+                uid: user.uid
+            }, { merge: true });
+
             navigate("/");
         } catch (err) {
             setError("Failed to log in with Google: " + err.message);
