@@ -170,22 +170,24 @@ export default function MobileNav() {
                 }
 
                 .mobile-nav-item.admin-item .mobile-nav-icon-wrap {
-                    color: rgba(239,68,68,0.6);
+                    color: var(--danger-color);
+                    opacity: 0.65;
                 }
 
                 .mobile-nav-item.admin-item.active .mobile-nav-icon-wrap {
-                    background: rgba(239,68,68,0.12);
-                    color: #f87171;
-                    box-shadow: 0 0 16px rgba(239,68,68,0.2);
+                    background: var(--danger-glow);
+                    color: var(--danger-color);
+                    box-shadow: 0 0 16px var(--danger-glow);
+                    opacity: 1;
                 }
 
                 .mobile-nav-item.admin-item.active .mobile-nav-label {
-                    color: #f87171;
+                    color: var(--danger-color);
                 }
 
                 .mobile-nav-item.admin-item.active .nav-active-dot {
-                    background: #f87171;
-                    box-shadow: 0 0 8px rgba(239,68,68,0.6);
+                    background: var(--danger-color);
+                    box-shadow: 0 0 8px var(--danger-glow);
                 }
             `}</style>
         </>
