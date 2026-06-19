@@ -3,12 +3,12 @@ import { Modal, Form, Button, Row, Col } from 'react-bootstrap';
 import { format } from 'date-fns';
 
 export default function AttendanceModal({ show, onHide, classData, subjects = [], onSave }) {
-    // Mode: 'regular' if classData is set, 'extra' if classData is null
+
     const isExtra = !classData;
 
     const [date, setDate] = useState(format(new Date(), 'yyyy-MM-dd'));
     const [subject, setSubject] = useState("");
-    const [topic, setTopic] = useState(""); // New State for Topic
+    const [topic, setTopic] = useState(""); 
     const [status, setStatus] = useState("Present");
     const [startTime, setStartTime] = useState(format(new Date(), 'HH:mm'));
     const [endTime, setEndTime] = useState(format(new Date(), 'HH:mm'));
@@ -17,25 +17,21 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
     useEffect(() => {
         if (show) {
             if (classData) {
-                // Regular Schedule Mode or Edit Mode
+
                 setDate(classData.date || format(new Date(), 'yyyy-MM-dd'));
                 setSubject(classData.subject || "");
-                setTopic(classData.topic || ""); // Load existing topic if editing
+                setTopic(classData.topic || ""); 
                 setStartTime(classData.startTime || format(new Date(), 'HH:mm'));
                 setEndTime(classData.endTime || format(new Date(), 'HH:mm'));
 
-                // If editing an existing record, set the current status
                 if (classData.currentStatus) {
                     setStatus(classData.currentStatus);
                 } else {
-                    setStatus("Present"); // Default for new records
+                    setStatus("Present"); 
                 }
-                // If the classData has a specific date (from the view), use it. 
-                // In Dashboard viewDate is passed typically via classData if we refactor, 
-                // but checking Dashboard, classData passed is 'cls' which is the schedule item.
-                // We might need to pass the *date* separately or inject it into classData.
+
             } else {
-                // Extra Class Mode
+
                 setDate(format(new Date(), 'yyyy-MM-dd'));
                 setSubject(subjects.length > 0 ? subjects[0] : "");
                 setTopic("");
@@ -53,11 +49,11 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
         }
 
         setLoading(true);
-        // Construct the record object
+
         const record = {
             date: date,
             subject: subject,
-            topic: topic.trim(), // Include topic in record
+            topic: topic.trim(), 
             status: status,
             startTime: startTime,
             endTime: endTime,
@@ -66,7 +62,6 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
             isExtra: isExtra
         };
 
-        // If editing existing record, include the ID
         if (classData && classData.existingRecordId) {
             record.existingRecordId = classData.existingRecordId;
             console.log('✏️ Updating existing attendance record:', record);
@@ -90,21 +85,18 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
             </Modal.Header>
             <Modal.Body className="pt-2">
                 <Form>
-                    {/* Date */}
+                    {}
                     <Form.Group className="mb-3">
                         <Form.Label className="small text-muted fw-bold">Date</Form.Label>
                         <Form.Control
                             type="date"
                             value={date}
                             onChange={(e) => setDate(e.target.value)}
-                        // If it's a regular class, maybe lock the date? 
-                        // Usually you mark attendance for the specific day you selected.
-                        // But usually users can change it if they are marking retrospective?
-                        // Let's keep it editable but defaulted.
+
                         />
                     </Form.Group>
 
-                    {/* Subject */}
+                    {}
                     <Form.Group className="mb-4">
                         <Form.Label className="small text-muted fw-bold">Subject</Form.Label>
                         {isExtra ? (
@@ -127,7 +119,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                         )}
                     </Form.Group>
 
-                    {/* Time Fields - Only show for extra classes */}
+                    {}
                     {isExtra && (
                         <Row className="mb-4">
                             <Col xs={6}>
@@ -153,7 +145,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                         </Row>
                     )}
 
-                    {/* Topic / Syllabus Input (New Feature) */}
+                    {}
                     <Form.Group className="mb-4">
                         <Form.Label className="small text-muted fw-bold">Topic / Syllabus Covered (Optional)</Form.Label>
                         <Form.Control
@@ -164,7 +156,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                         />
                     </Form.Group>
 
-                    {/* Status Selection */}
+                    {}
                     <Form.Group className="mb-4">
                         <Form.Label className="small text-muted fw-bold mb-2">Status</Form.Label>
                         <div className="d-flex flex-wrap gap-2 mb-2">
@@ -211,14 +203,9 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
     );
 }
 
-// Helper for the pill buttons
 function StatusBtn({ label, active, color, onClick, block }) {
     let variant = `outline-${color}`;
     if (active) variant = color;
-
-    // Custom styles to match the look
-    // If active: filled, white text
-    // If inactive: outline, colored text
 
     return (
         <Button

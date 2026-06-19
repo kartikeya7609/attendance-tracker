@@ -12,7 +12,7 @@ import { useNavigate, useParams, useLocation } from "react-router-dom";
 export default function CreateTimetable() {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
-    const { id } = useParams(); // For edit mode
+    const { id } = useParams(); 
     const location = useLocation();
     const isEditMode = !!id;
 
@@ -35,15 +35,14 @@ export default function CreateTimetable() {
     });
 
     const [saving, setSaving] = useState(false);
-    const [message, setMessage] = useState(""); // Error message
-    const [success, setSuccess] = useState(""); // Success message + code
+    const [message, setMessage] = useState(""); 
+    const [success, setSuccess] = useState(""); 
 
-    // Default period times
     const defaultPeriods = [
         { startTime: "09:00", endTime: "10:00" },
         { startTime: "10:00", endTime: "11:00" },
         { startTime: "11:00", endTime: "12:00" },
-        { startTime: "12:00", endTime: "13:00" }, // Lunch
+        { startTime: "12:00", endTime: "13:00" }, 
         { startTime: "13:00", endTime: "14:00" },
         { startTime: "14:00", endTime: "15:00" },
     ];
@@ -77,7 +76,6 @@ export default function CreateTimetable() {
             if (timetableSnap.exists()) {
                 const data = timetableSnap.data();
 
-                // Check if user is the creator
                 if (data.creatorUid !== currentUser.uid) {
                     setMessage("You don't have permission to edit this timetable");
                     setTimeout(() => navigate('/timetables'), 2000);
@@ -317,10 +315,8 @@ export default function CreateTimetable() {
                     </div>
                 </div>
 
-
                 {message && <Alert variant="danger">{message}</Alert>}
                 {success && !saving && <Alert variant="success">{success}</Alert>}
-
 
                 <Row className="g-4">
                     <Col lg={4}>
@@ -359,7 +355,7 @@ export default function CreateTimetable() {
                                         <Nav.Item key={day}>
                                             <Nav.Link
                                                 as="button"
-                                                className={`rounded-pill px-4 border text-muted ${activeDay === day ? 'bg-dark text-white border-dark' : 'bg-light text-dark border-light'}`}
+                                                className={`rounded-pill px-4 border text-muted ${activeDay === day ? 'bg-primary-gradient text-white border-transparent' : 'bg-surface text-secondary border-color'}`}
                                                 onClick={() => setActiveDay(day)}
                                             >
                                                 {day}
@@ -383,7 +379,7 @@ export default function CreateTimetable() {
                                 </div>
 
                                 {scheduleData[activeDay].length === 0 ? (
-                                    <div className="text-center py-5 bg-light rounded-3 text-muted border border-dashed">
+                                    <div className="text-center py-5 bg-surface rounded-3 text-muted border border-dashed">
                                         <FaClock size={30} className="mb-3 opacity-25" />
                                         <p>No periods added for {activeDay}.</p>
                                         <div className="d-flex justify-content-center gap-3">
@@ -395,7 +391,7 @@ export default function CreateTimetable() {
                                 ) : (
                                     <div className="d-flex flex-column gap-3">
                                         {scheduleData[activeDay].map((slot, index) => (
-                                            <div key={index} className="p-3 border rounded-3 bg-light time-slot-card">
+                                            <div key={index} className="p-3 border rounded-3 bg-surface time-slot-card">
                                                 <Row className="g-2 g-md-3 align-items-end">
                                                     {/* Start Time */}
                                                     <Col xs={6} sm={6} md={3}>
@@ -495,24 +491,6 @@ export default function CreateTimetable() {
 
                     .delete-btn:hover {
                         transform: scale(1.1);
-                    }
-
-                    /* Day Navigation Scrollbar */
-                    .overflow-auto::-webkit-scrollbar {
-                        height: 6px;
-                    }
-
-                    .overflow-auto::-webkit-scrollbar-track {
-                        background: transparent;
-                    }
-
-                    .overflow-auto::-webkit-scrollbar-thumb {
-                        background-color: rgba(0, 0, 0, 0.2);
-                        border-radius: 3px;
-                    }
-
-                    .overflow-auto::-webkit-scrollbar-thumb:hover {
-                        background-color: rgba(0, 0, 0, 0.3);
                     }
 
                     /* Responsive adjustments */

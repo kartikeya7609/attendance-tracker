@@ -2,7 +2,6 @@
 import { db } from "./firebase";
 import { collection, addDoc, updateDoc, arrayUnion, query, where, getDocs, doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 
-// Helper to generate a 6-character random code
 const generateCode = () => {
     const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
     let code = "";
@@ -12,12 +11,10 @@ const generateCode = () => {
     return code;
 };
 
-// Create a new public timetable
 export const createTimetable = async (user, timetableData) => {
     let unique = false;
     let code = "";
 
-    // Ensure uniqueness
     while (!unique) {
         code = generateCode();
         const q = query(collection(db, "public_timetables"), where("code", "==", code));
@@ -31,20 +28,18 @@ export const createTimetable = async (user, timetableData) => {
         creatorUid: user.uid,
         creatorName: user.displayName || user.email.split('@')[0],
         createdAt: Timestamp.now(),
-        attendees: [user.uid] // Creator auto-joins
+        attendees: [user.uid] 
     };
 
     const docRef = await addDoc(collection(db, "public_timetables"), newTimetable);
 
-    // Add to user's joined list
     await joinTimetable(user.uid, code);
 
     return { id: docRef.id, code };
 };
 
-// Join a timetable by code
 export const joinTimetable = async (uid, code) => {
-    // 1. Find the timetable
+
     const q = query(collection(db, "public_timetables"), where("code", "==", code));
     const snapshot = await getDocs(q);
 
@@ -54,7 +49,6 @@ export const joinTimetable = async (uid, code) => {
     const timetableId = timetableDoc.id;
     const timetableData = timetableDoc.data();
 
-    // 2. Check if already joined
     const joinRef = doc(db, "users", uid, "joined_timetables", timetableId);
     const joinSnap = await getDoc(joinRef);
 
@@ -66,12 +60,10 @@ export const joinTimetable = async (uid, code) => {
             joinedAt: Timestamp.now()
         });
 
-        // Update valid attendee count on timetable
         await updateDoc(doc(db, "public_timetables", timetableId), {
             attendees: arrayUnion(uid)
         });
 
-        // 3. Extract subjects from timetable schedule and add to user's subjects
         const subjectsToAdd = new Set();
         if (timetableData.schedule) {
             Object.values(timetableData.schedule).forEach(daySchedule => {
@@ -87,9 +79,8 @@ export const joinTimetable = async (uid, code) => {
             });
         }
 
-        // Add subjects to user's subjects collection if not already present
         for (const subjectName of subjectsToAdd) {
-            // Check if subject already exists
+
             const subQ = query(
                 collection(db, "subjects"),
                 where("uid", "==", uid),
@@ -102,7 +93,7 @@ export const joinTimetable = async (uid, code) => {
                     uid: uid,
                     name: subjectName,
                     createdAt: new Date().toISOString(),
-                    fromTimetable: timetableId // Track which timetable added this
+                    fromTimetable: timetableId 
                 });
             }
         }
@@ -111,20 +102,15 @@ export const joinTimetable = async (uid, code) => {
     return timetableData;
 };
 
-// Leave a timetable
 export const leaveTimetable = async (uid, timetableId) => {
-    // 1. Remove from user's joined_timetables
+
     const joinRef = doc(db, "users", uid, "joined_timetables", timetableId);
     const joinSnap = await getDoc(joinRef);
 
     if (joinSnap.exists()) {
-        await setDoc(joinRef, {}); // Clear the document
-        await updateDoc(joinRef, { deleted: true }); // Mark as deleted
+        await setDoc(joinRef, {}); 
+        await updateDoc(joinRef, { deleted: true }); 
 
-        // Alternative: Actually delete the document
-        // await deleteDoc(joinRef);
-
-        // 2. Remove from timetable's attendees list
         const timetableRef = doc(db, "public_timetables", timetableId);
         const timetableSnap = await getDoc(timetableRef);
 
@@ -138,22 +124,19 @@ export const leaveTimetable = async (uid, timetableId) => {
     }
 };
 
-// Get all public timetables
 export const getAllTimetables = async () => {
     const q = query(collection(db, "public_timetables"));
     const snapshot = await getDocs(q);
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// Get user's joined timetables
 export const getUserTimetables = async (uid) => {
     const q = query(collection(db, "users", uid, "joined_timetables"));
     const snapshot = await getDocs(q);
     const joined = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(j => !j.deleted); // Filter out deleted/left timetables
+        .filter(j => !j.deleted); 
 
-    // Fetch full details
     const timetables = [];
     for (const j of joined) {
         const tDoc = await getDoc(doc(db, "public_timetables", j.timetableId));
@@ -164,21 +147,19 @@ export const getUserTimetables = async (uid) => {
     return timetables;
 };
 
-// Create a PRIVATE timetable (not published, only for creator)
 export const createPrivateTimetable = async (user, timetableData) => {
     const newTimetable = {
         ...timetableData,
-        code: null, // No code for private timetables
+        code: null, 
         isPrivate: true,
         creatorUid: user.uid,
         creatorName: user.displayName || user.email.split('@')[0],
         createdAt: Timestamp.now(),
-        attendees: [user.uid] // Only creator
+        attendees: [user.uid] 
     };
 
     const docRef = await addDoc(collection(db, "public_timetables"), newTimetable);
 
-    // Add to user's joined list
     const joinRef = doc(db, "users", user.uid, "joined_timetables", docRef.id);
     await setDoc(joinRef, {
         timetableId: docRef.id,
@@ -190,7 +171,6 @@ export const createPrivateTimetable = async (user, timetableData) => {
     return { id: docRef.id };
 };
 
-// Get timetables CREATED by user (both public and private)
 export const getUserCreatedTimetables = async (uid) => {
     const q = query(
         collection(db, "public_timetables"),
@@ -200,7 +180,6 @@ export const getUserCreatedTimetables = async (uid) => {
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-// Update/Edit an existing timetable
 export const updateTimetable = async (timetableId, timetableData) => {
     const timetableRef = doc(db, "public_timetables", timetableId);
 

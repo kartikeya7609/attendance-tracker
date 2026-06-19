@@ -7,7 +7,6 @@ import { Alert, Container, Button } from "react-bootstrap";
 export default function AdminRoute({ children }) {
     const { currentUser, logout } = useAuth();
 
-    // Replace this with the actual creator's email
     const CREATOR_EMAIL = "kartikeyakk2007@gmail.com";
 
     if (!currentUser) {

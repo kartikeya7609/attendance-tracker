@@ -10,7 +10,6 @@ ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarEle
 const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], timetables = [], onEditRecord }) => {
     if (!subject) return null;
 
-    // --- Data Logic ---
     const records = useMemo(() => attendanceRecords.filter(r => r.subject === subject), [attendanceRecords, subject]);
 
     const stats = useMemo(() => {
@@ -25,19 +24,13 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
         };
     }, [records]);
 
-    // Safety Net Calculation (Bunking Budget)
     const bunkBudget = useMemo(() => {
         const targetPercent = 75;
         const currentPercent = stats.percentage;
         const { present, total } = stats;
 
         if (currentPercent >= targetPercent) {
-            // How many can I skip?
-            // (present) / (total + x) >= 0.75
-            // present >= 0.75*total + 0.75*x
-            // present - 0.75*total >= 0.75*x
-            // (present - 0.75*total) / 0.75 >= x
-            // x <= (present/0.75) - total
+
             const safeSkips = Math.floor(present / 0.75) - total;
             return {
                 status: 'safe',
@@ -45,12 +38,7 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                 message: `You can safely skip ${safeSkips} more classes while staying above ${targetPercent}%.`
             };
         } else {
-            // How many must I attend?
-            // (present + x) / (total + x) >= 0.75
-            // present + x >= 0.75*total + 0.75*x
-            // 0.25*x >= 0.75*total - present
-            // x >= (0.75*total - present) / 0.25
-            // OR simply: x = 3 * total - 4 * present
+
             const needed = Math.ceil((0.75 * total - present) / 0.25);
             return {
                 status: 'danger',
@@ -60,7 +48,6 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
         }
     }, [stats]);
 
-    // Trend Data (Last 3 Months)
     const trendData = useMemo(() => {
         const months = [2, 1, 0].map(m => format(subMonths(new Date(), m), 'MMM'));
         const counts = [2, 1, 0].map(m => {
@@ -71,22 +58,38 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
             ).length;
         });
 
+        const primaryColor = typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--primary-color').trim() : '#323232';
+
         return {
             labels: months,
             datasets: [{
                 label: 'Classes Attended',
                 data: counts,
-                backgroundColor: 'rgba(13, 110, 253, 0.5)',
+                backgroundColor: primaryColor + '80',
                 borderRadius: 8,
             }]
         };
     }, [records]);
 
+    const doughnutData = useMemo(() => {
+        const successColor = typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--success-color').trim() : '#10B981';
+        const dangerColor = typeof window !== 'undefined' ? getComputedStyle(document.documentElement).getPropertyValue('--danger-color').trim() : '#EF4444';
+        return {
+            labels: ['Present', 'Absent'],
+            datasets: [{
+                data: [stats.present, stats.absent],
+                backgroundColor: [successColor, dangerColor],
+                cutout: '80%',
+                borderWidth: 0
+            }]
+        };
+    }, [stats]);
+
     return (
         <Modal show={show} onHide={onHide} centered size="lg" className="custom-modal p-0">
             <Modal.Body className="p-0 overflow-hidden" style={{ borderRadius: '20px' }}>
                 <div className="modal-glass-container">
-                    {/* Header Section */}
+                    {}
                     <div className="p-4 d-flex justify-content-between align-items-start bg-primary-gradient text-white">
                         <div>
                             <Badge bg="light" text="dark" className="mb-2 text-uppercase fw-bold">Subject Details</Badge>
@@ -97,20 +100,12 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
 
                     <div className="p-4">
                         <Row className="g-4">
-                            {/* Left: Main Stats */}
+                            {}
                             <Col lg={5}>
                                 <div className="stat-card p-4 text-center h-100">
                                     <div className="chart-container-rel">
                                         <Doughnut
-                                            data={{
-                                                labels: ['Present', 'Absent'],
-                                                datasets: [{
-                                                    data: [stats.present, stats.absent],
-                                                    backgroundColor: ['#00d084', '#ff4d4d'],
-                                                    cutout: '80%',
-                                                    borderWidth: 0
-                                                }]
-                                            }}
+                                            data={doughnutData}
                                             options={{ plugins: { legend: { display: false } } }}
                                         />
                                         <div className="chart-overlay">
@@ -125,7 +120,7 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                 </div>
                             </Col>
 
-                            {/* Right: Trend Chart */}
+                            {}
                             <Col lg={7}>
                                 <div className="stat-card p-4 h-100">
                                     <h6 className="fw-bold mb-3 d-flex align-items-center gap-2">
@@ -137,7 +132,7 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                 </div>
                             </Col>
 
-                            {/* Safety Net Card */}
+                            {}
                             <Col xs={12}>
                                 <div className={`stat-card p-4 border-start border-5 ${bunkBudget.status === 'safe' ? 'border-success' : 'border-danger'}`}>
                                     <h6 className="fw-bold mb-2 d-flex align-items-center gap-2">
@@ -159,7 +154,7 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                 </div>
                             </Col>
 
-                            {/* Horizontal History Scroll */}
+                            {}
                             <Col xs={12}>
                                 <h6 className="fw-bold text-muted mb-3 d-flex align-items-center gap-2">
                                     <FaHistory /> Recent History
@@ -184,7 +179,7 @@ const SubjectDetailsModal = ({ show, onHide, subject, attendanceRecords = [], ti
                                 </div>
                             </Col>
 
-                            {/* Schedule Section */}
+                            {}
                             <Col xs={12}>
                                 <div className="stat-card p-4">
                                     <h6 className="fw-bold mb-3">Weekly Schedule</h6>

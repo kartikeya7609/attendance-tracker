@@ -10,11 +10,10 @@ import { getUserTimetables, leaveTimetable } from "../services/timetableService"
 import SubjectDetailsModal from "../components/SubjectDetailsModal";
 import AttendanceModal from "../components/AttendanceModal";
 
-
 export default function Subjects() {
     const { currentUser } = useAuth();
     const [subjects, setSubjects] = useState([]);
-    const [attendanceStats, setAttendanceStats] = useState({}); // { subjectName: { total: 0, present: 0 } }
+    const [attendanceStats, setAttendanceStats] = useState({}); 
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
     const [showResetModal, setShowResetModal] = useState(false);
@@ -27,7 +26,6 @@ export default function Subjects() {
     const [confirmText, setConfirmText] = useState("");
     const [joinedTimetables, setJoinedTimetables] = useState([]);
 
-    // New State for Details/Edit
     const [attendanceRecords, setAttendanceRecords] = useState([]);
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState(null);
@@ -42,20 +40,17 @@ export default function Subjects() {
     const fetchData = async () => {
         setLoading(true);
         try {
-            // 1. Fetch Subjects
+
             const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
             const subSnap = await getDocs(subQ);
             const subList = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // 2. Fetch Joined Timetables
             const timetables = await getUserTimetables(currentUser.uid);
             setJoinedTimetables(timetables);
 
-            // 3. Auto-sync subjects from timetables
             const existingSubjectNames = new Set(subList.map(s => s.name));
             const timetableSubjects = new Set();
 
-            // Extract all unique subjects from joined timetables
             timetables.forEach(t => {
                 Object.values(t.schedule || {}).forEach(day => {
                     day.forEach(cls => {
@@ -66,7 +61,6 @@ export default function Subjects() {
                 });
             });
 
-            // Add new subjects that don't exist yet
             for (const subName of timetableSubjects) {
                 if (!existingSubjectNames.has(subName)) {
                     const newSubDoc = await addDoc(collection(db, "subjects"), {
@@ -81,7 +75,6 @@ export default function Subjects() {
             setSubjects(subList);
             setAllSubjectsList(subList.map(s => s.name).sort());
 
-            // 4. Fetch Attendance Records to calculate stats
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
             const attSnap = await getDocs(attQ);
             const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -89,14 +82,13 @@ export default function Subjects() {
 
             const stats = {};
 
-            // Initialize stats for each subject
             subList.forEach(s => {
                 stats[s.name] = { total: 0, present: 0 };
             });
 
             attSnap.forEach(doc => {
                 const data = doc.data();
-                // Only count valid classes (ignore cancelled)
+
                 if (data.status !== 'Class Cancelled' && data.status !== 'Postponed') {
                     const subName = data.subject;
                     if (!stats[subName]) stats[subName] = { total: 0, present: 0 };
@@ -155,11 +147,10 @@ export default function Subjects() {
         setError("");
 
         try {
-            // Fetch all attendance records for this user
+
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
             const attSnap = await getDocs(attQ);
 
-            // Use batch delete for better performance
             const batch = writeBatch(db);
             attSnap.docs.forEach((docSnapshot) => {
                 batch.delete(docSnapshot.ref);
@@ -167,7 +158,6 @@ export default function Subjects() {
 
             await batch.commit();
 
-            // Refresh data
             await fetchData();
             setShowResetModal(false);
             setConfirmText("");
@@ -187,7 +177,7 @@ export default function Subjects() {
         setError("");
 
         try {
-            // Leave the timetable
+
             await leaveTimetable(currentUser.uid, selectedTimetable.id);
 
             await fetchData();
@@ -214,8 +204,6 @@ export default function Subjects() {
         return 'danger';
     };
 
-    // --- New Handlers ---
-
     const handleSubjectClick = (subjectName) => {
         setSelectedSubject(subjectName);
         setShowDetailsModal(true);
@@ -231,7 +219,7 @@ export default function Subjects() {
             date: record.date,
             existingRecordId: record.id,
             currentStatus: record.status,
-            topic: record.topic || "" // Pass topic to modal
+            topic: record.topic || "" 
         });
         setShowAttendanceModal(true);
     };
@@ -253,7 +241,7 @@ export default function Subjects() {
                 await addDoc(collection(db, "attendance_records"), fullRecord);
             }
 
-            await fetchData(); // Reload all data
+            await fetchData(); 
             setShowAttendanceModal(false);
         } catch (error) {
             console.error('❌ Failed to save attendance:', error);
@@ -287,99 +275,130 @@ export default function Subjects() {
                         </Button>
                     </div>
                 </div>
-
                 {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
 
-                {loading ? (
-                    <div className="text-center py-5">
-                        <Spinner animation="border" variant="primary" />
-                    </div>
-                ) : (
-                    <Row className="g-4">
-                        {subjects.length === 0 && (
-                            <Col xs={12} className="text-center py-5 text-muted">
-                                <FaBook size={40} className="mb-3 opacity-25" />
-                                <p>No subjects yet. Join a timetable or add subjects manually.</p>
-                            </Col>
+                <Row className="g-4">
+                    {/* Left Column: My Subjects */}
+                    <Col lg={8}>
+                        <div className="d-flex align-items-center justify-content-between mb-4">
+                            <h4 className="fw-bold mb-0 d-flex align-items-center gap-2">
+                                <FaBook className="text-primary" size={18} /> My Subjects
+                            </h4>
+                            <span className="badge bg-primary-subtle text-primary rounded-pill px-3 py-1">
+                                {subjects.length} Total
+                            </span>
+                        </div>
+
+                        {loading ? (
+                            <div className="text-center py-5">
+                                <Spinner animation="border" variant="primary" />
+                            </div>
+                        ) : subjects.length === 0 ? (
+                            <div style={{
+                                border: '2px dashed var(--border-color)',
+                                borderRadius: 20, padding: '4rem 2rem', textAlign: 'center',
+                                color: 'var(--text-tertiary)',
+                                background: 'var(--bg-card)',
+                                cursor: 'pointer'
+                            }} onClick={() => setShowModal(true)} className="hover-pulse animate-fade-in">
+                                <FaBook size={40} className="mb-3 opacity-25 text-primary animate-pulse" />
+                                <h5 className="fw-bold text-primary mb-1">No Subjects Found</h5>
+                                <p className="small mb-3">Add subjects manually to start tracking your attendance.</p>
+                                <Button variant="outline-primary" size="sm" className="rounded-pill px-4">
+                                    <FaPlus size={10} className="me-1" /> Add Subject
+                                </Button>
+                            </div>
+                        ) : (
+                            <Row className="g-3">
+                                {subjects.map(sub => {
+                                    const percent = getPercentage(sub.name);
+                                    const stat = attendanceStats[sub.name] || { total: 0, present: 0 };
+                                    return (
+                                        <Col md={6} key={sub.id}>
+                                            <Card
+                                                className="border-0 shadow-sm h-100 hover-card card-glass"
+                                                style={{ cursor: 'pointer', transition: 'transform 0.2s', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}
+                                                onClick={() => handleSubjectClick(sub.name)}
+                                            >
+                                                <Card.Body className="d-flex flex-column p-4">
+                                                    <div className="d-flex justify-content-between align-items-start mb-3">
+                                                        <div className="fw-bold fs-6 text-truncate pe-2" title={sub.name} style={{ color: 'var(--text-primary)' }}>
+                                                            {sub.name}
+                                                            {sub.autoAdded && <Badge bg="success" className="ms-2 small" style={{ fontSize: '0.65rem' }}>Auto</Badge>}
+                                                        </div>
+                                                        <Button
+                                                            variant="light"
+                                                            size="sm"
+                                                            className="text-danger rounded-circle p-0"
+                                                            style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(sub.id); }}
+                                                        >
+                                                            <FaTrash size={10} />
+                                                        </Button>
+                                                    </div>
+
+                                                    <div className="mt-auto">
+                                                        <div className="d-flex justify-content-between align-items-end mb-1">
+                                                            <h3 className={`fw-bold mb-0 text-${getVariant(percent)}`} style={{ fontSize: '1.4rem' }}>{percent}%</h3>
+                                                            <div className="text-muted small fw-bold">
+                                                                {stat.present} / {stat.total} Classes
+                                                            </div>
+                                                        </div>
+                                                        <ProgressBar
+                                                            now={percent}
+                                                            variant={getVariant(percent)}
+                                                            style={{ height: '6px', borderRadius: '10px' }}
+                                                            className="bg-light"
+                                                        />
+                                                        <div className="mt-2 d-flex justify-content-between">
+                                                            <Badge bg={percent >= 75 ? 'success' : 'danger'} bg-opacity="10" className={`text-${percent >= 75 ? 'success' : 'danger'} bg-opacity-10 px-2 py-1 rounded-pill fw-normal small`} style={{ fontSize: '0.7rem' }}>
+                                                                {percent >= 75 ? 'On Track' : 'At Risk'}
+                                                            </Badge>
+                                                        </div>
+                                                    </div>
+                                                </Card.Body>
+                                            </Card>
+                                        </Col>
+                                    );
+                                })}
+                            </Row>
                         )}
-                        {subjects.map(sub => {
-                            const percent = getPercentage(sub.name);
-                            const stat = attendanceStats[sub.name] || { total: 0, present: 0 };
+                    </Col>
 
-                            return (
-                                <Col md={6} lg={4} key={sub.id}>
-                                    <Card
-                                        className="border-0 shadow-sm h-100 hover-card"
-                                        style={{ cursor: 'pointer', transition: 'transform 0.2s' }}
-                                        onClick={() => handleSubjectClick(sub.name)}
-                                    >
-                                        <Card.Body className="d-flex flex-column">
-                                            <div className="d-flex justify-content-between align-items-start mb-3">
-                                                <div className="fw-bold fs-5 text-truncate pe-2" title={sub.name}>
-                                                    {sub.name}
-                                                    {sub.autoAdded && <Badge bg="success" className="ms-2 small">Auto</Badge>}
-                                                </div>
-                                                <Button
-                                                    variant="light"
-                                                    size="sm"
-                                                    className="text-danger rounded-circle p-2"
-                                                    onClick={(e) => { e.stopPropagation(); handleDelete(sub.id); }}
-                                                >
-                                                    <FaTrash size={12} />
-                                                </Button>
-                                            </div>
+                    {/* Right Column: Joined Timetables (sleek, compact vertical panel) */}
+                    <Col lg={4}>
+                        <div className="d-flex align-items-center justify-content-between mb-4">
+                            <h4 className="fw-bold mb-0 d-flex align-items-center gap-2">
+                                <FaClock className="text-primary" size={18} /> Timetables
+                            </h4>
+                        </div>
 
-                                            <div className="mt-auto">
-                                                <div className="d-flex justify-content-between align-items-end mb-1">
-                                                    <div className="d-flex align-items-center gap-2">
-                                                        <h2 className={`fw-bold mb-0 text-${getVariant(percent)}`}>{percent}%</h2>
-                                                    </div>
-                                                    <div className="text-muted small fw-bold">
-                                                        {stat.present} / {stat.total} Classes
-                                                    </div>
-                                                </div>
-                                                <ProgressBar
-                                                    now={percent}
-                                                    variant={getVariant(percent)}
-                                                    style={{ height: '8px', borderRadius: '10px' }}
-                                                    className="bg-light"
-                                                />
-                                                <div className="mt-2 d-flex justify-content-between">
-                                                    <Badge bg={percent >= 75 ? 'success' : 'danger'} bg-opacity="10" className={`text-${percent >= 75 ? 'success' : 'danger'} bg-opacity-10 px-2 py-1 rounded-pill fw-normal small`}>
-                                                        {percent >= 75 ? 'On Track' : 'At Risk'}
-                                                    </Badge>
-                                                </div>
-                                            </div>
-                                        </Card.Body>
-                                    </Card>
-                                </Col>
-                            );
-                        })}
-                    </Row>
-                )}
-
-                {/* Joined Timetables Section */}
-                <div className="mt-5 pt-4 border-top">
-                    <h3 className="fw-bold mb-3">Joined Timetables</h3>
-                    {joinedTimetables.length === 0 ? (
-                        <Card className="border-0 shadow-sm bg-light text-center py-5">
-                            <FaClock size={40} className="text-muted opacity-25 mb-3 mx-auto" />
-                            <p className="text-muted mb-0">No timetables joined yet.</p>
-                            <Button variant="link" href="/timetables">Browse Timetables</Button>
-                        </Card>
-                    ) : (
-                        <Row className="g-3">
-                            {joinedTimetables.map(tt => (
-                                <Col md={6} lg={4} key={tt.id}>
-                                    <Card className="border-0 shadow-sm h-100">
-                                        <Card.Body>
+                        {joinedTimetables.length === 0 ? (
+                            <div style={{
+                                border: '2px dashed var(--border-color)',
+                                borderRadius: 20, padding: '3.5rem 1.5rem', textAlign: 'center',
+                                color: 'var(--text-tertiary)',
+                                background: 'var(--bg-card)'
+                            }} className="animate-fade-in">
+                                <FaClock size={36} className="text-muted opacity-25 mb-3 mx-auto" />
+                                <h6 className="fw-bold text-primary mb-1">No Timetables</h6>
+                                <p className="small mb-3">Join a shared schedule to automatically sync subjects and classes.</p>
+                                <Button href="/timetables" variant="outline-primary" size="sm" className="rounded-pill px-3">
+                                    Explore Timetables
+                                </Button>
+                            </div>
+                        ) : (
+                            <div className="d-flex flex-column gap-3">
+                                {joinedTimetables.map(tt => (
+                                    <Card key={tt.id} className="border-0 shadow-sm card-glass" style={{ background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                        <Card.Body className="p-3">
                                             <div className="d-flex justify-content-between align-items-start mb-2">
-                                                <h6 className="fw-bold mb-0">{tt.name}</h6>
-                                                <Badge bg="primary" className="rounded-pill">
+                                                <h6 className="fw-bold mb-0 text-truncate pe-2" style={{ maxWidth: '180px', fontSize: '0.95rem' }}>{tt.name}</h6>
+                                                <Badge bg="primary" className="rounded-pill" style={{ fontSize: '0.7rem' }}>
                                                     {tt.code}
                                                 </Badge>
                                             </div>
-                                            <div className="text-muted small mb-3">
+                                            <div className="text-muted small mb-3" style={{ fontSize: '0.8rem' }}>
                                                 <div className="d-flex align-items-center gap-2 mb-1">
                                                     <FaUsers size={12} />
                                                     <span>{tt.attendees?.length || 0} members</span>
@@ -390,22 +409,23 @@ export default function Subjects() {
                                                 variant="outline-danger"
                                                 size="sm"
                                                 className="w-100 rounded-pill d-flex align-items-center justify-content-center gap-2"
+                                                style={{ fontSize: '0.8rem', padding: '0.4rem 1rem' }}
                                                 onClick={() => {
                                                     setSelectedTimetable(tt);
                                                     setShowLeaveTimetableModal(true);
                                                 }}
                                             >
-                                                <FaSignOutAlt /> Leave Timetable
+                                                <FaSignOutAlt size={12} /> Leave Timetable
                                             </Button>
                                         </Card.Body>
                                     </Card>
-                                </Col>
-                            ))}
-                        </Row>
-                    )}
-                </div>
+                                ))}
+                            </div>
+                        )}
+                    </Col>
+                </Row>
 
-                {/* Add Subject Modal */}
+                {}
                 <Modal show={showModal} onHide={() => setShowModal(false)} centered>
                     <Modal.Header closeButton className="border-0 pb-0">
                         <Modal.Title className="fw-bold">Add New Subject</Modal.Title>
@@ -432,7 +452,7 @@ export default function Subjects() {
                     </Form>
                 </Modal>
 
-                {/* Reset Semester Confirmation Modal */}
+                {}
                 <Modal
                     show={showResetModal}
                     onHide={() => {
@@ -505,7 +525,7 @@ export default function Subjects() {
                     </Modal.Footer>
                 </Modal>
 
-                {/* Leave Timetable Modal */}
+                {}
                 <Modal
                     show={showLeaveTimetableModal}
                     onHide={() => {

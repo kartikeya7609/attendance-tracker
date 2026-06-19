@@ -1,70 +1,122 @@
-# Attendance Tracker
+# ⚡ ClassPulse
 
-A modern, responsive web and mobile application for tracking class attendance, managing timetables, and viewing attendance statistics. Built with React, Vite, Firebase, and Capacitor.
+ClassPulse is an ultra-premium, high-fidelity, mobile-first SaaS dashboard designed for smart attendance tracking and shared academic schedule synchronization. Rebranded with a state-of-the-art dual-theme color system and full Progressive Web App (PWA) integration, ClassPulse allows students and educators to manage timetables and monitor attendance metrics through a clean, glassmorphic workspace.
 
-## 🚀 Getting Started (Developer Guide)
+---
 
-Follow these instructions to set up the project locally on your machine.
+## 🎨 Design Language & Theme Identity
+
+ClassPulse is engineered with a dynamic, CSS variable-driven theme engine that automatically adapts all typography, button gradients, charts, and glow effects to user preferences:
+
+*   **☀️ Light Theme (Beige & Dark Grey)**:
+    *   **Background**: Soothing Warm Beige (`#DDD0C8`)
+    *   **Typography & Core Accents**: Sleek Dark Grey Charcoal (`#323232`)
+*   **🌙 Dark Theme (Classic Obsidian Blue, Turquoise & Gold)**:
+    *   **Background**: Deep Classic Obsidian Blue (`#0A1828`)
+    *   **Accents & Glows**: Electric Turquoise (`#178582`)
+    *   **Highlights**: Premium Gold Accent (`#BFA181`)
+
+Every color value across the application is imported dynamically from variables defined in `src/index.css` root, ensuring zero hardcoded inline hex values in the markup.
+
+---
+
+## ✨ Features
+
+- **📱 Progressive Web App (PWA)**: Downloadable on iOS and Android devices directly from your web browser, equipped with offline service worker caching and home-screen shortcut badges.
+- **📊 Glassmorphic Dashboard Overview**:
+  - **Dynamic Gauge**: Custom SVG circular rings representing overall attendance with transition stroke animations.
+  - **30-Day Activity Heatmap**: Visual calendar-grid rendering color intensities based on attendance frequency.
+  - **Smart Notification Flags**: Auto-prompts to quick-mark attendance for classes that recently ended.
+- **🗓️ Subjects & Timetable Hub**:
+  - **Split Layout Design**: Grid of subjects on the left; compact, real-time shared timetables on the right.
+  - **Shared Timetables**: Build public/private schedules and sync changes in real-time. Students can join instantly using a unique 6-character access token.
+- **📜 Chronological Logs**: Full audit logs of all registered attendance markings with support for quick edits and deletions.
+- **🔐 Secure Firebase Auth**: Powered by Google Auth and standard Email/Password verification, validated against custom Firebase access control rules.
+
+---
+
+## 🛠️ Technology Stack
+
+- **Framework**: React (v19) + Vite (v7) + React Router DOM (v7)
+- **Styling**: Bootstrap (v5), Custom CSS Glassmorphism
+- **Database & Identity**: Firebase Firestore, Firebase Authentication
+- **Service Workers**: Vite PWA Plugin
+- **Charts**: ChartJS + React Chartjs 2
+
+---
+
+## 🚀 Getting Started
+
+Follow these steps to set up the project locally on your machine.
 
 ### Prerequisites
-
-*   **Node.js**: Ensure you have Node.js installed (v16+ recommended).
-*   **Android Studio**: Required if you plan to build or run the Android native app.
+- **Node.js** (v18+ recommended)
+- A **Firebase Project** with Firestore and Google Sign-in enabled.
 
 ### Installation
 
-1.  **Clone the repository** (if you haven't already).
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/kartikeya7609/attendance-tracker.git
+   cd attendance-tracker
+   ```
 
-### Running the Web App
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Configure Environment Variables**:
+   Create a `.env` file in the root directory and copy the format from `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+   Populate it with your Firebase Web App credentials:
+   ```env
+   VITE_FIREBASE_API_KEY=your_api_key
+   VITE_FIREBASE_AUTH_DOMAIN=your_auth_domain
+   VITE_FIREBASE_PROJECT_ID=your_project_id
+   VITE_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+   VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
+   VITE_FIREBASE_APP_ID=your_app_id
+   VITE_FIREBASE_MEASUREMENT_ID=your_measurement_id
+   ```
+
+### Development Execution
 
 To start the local development server:
-
 ```bash
 npm run dev
 ```
+Open your browser and navigate to `http://localhost:5173`.
 
-The app will typically run at `http://localhost:5173`.
+### Production Compiles
 
-### Building for Production
-
-To create a production build (output to `dist/`):
-
+To compile and optimize the web application for production:
 ```bash
 npm run build
 ```
+The optimized bundle along with the generated PWA service worker files will compile to the `dist/` directory.
 
-### 📱 Android Development
+---
 
-This project uses **Capacitor** to run as a native Android app.
+## 📁 Directory Structure
 
-1.  **Sync Web Assets**:
-    After building the web app (`npm run build`), sync the changes to the Android native project:
-    ```bash
-    npx cap sync
-    ```
-
-2.  **Open in Android Studio**:
-    ```bash
-    npx cap open android
-    ```
-    From Android Studio, you can run the app on an emulator or a physical device.
-
-## 🛠️ Configuration
-
-### Firebase
-The app relies on Firebase for Authentication and Firestore.
-*   Ensure `src/services/firebase.js` contains your valid Firebase configuration.
-*   Ensure `google-services.json` is present in `android/app/` for native Android Google Sign-In.
-
-### KeyStore (Android Release)
-To generate a release APK, you will need a signing key.
-*   Use `generate_keystore.ps1` (PowerShell) or `make_keystore.bat` (Batch) to generate a keystore if needed.
-*   Refer to `KEYSTORE_DETAILS.md` for information on the keystore alias and passwords.
-
-## 📚 User Guide
-
-For instructions on how to use the application features, please refer to [instructions.txt](./instructions.txt).
+```text
+├── eslint.config.js       # ESLint configuration rules
+├── firestore.rules        # Security rules for Firestore database
+├── index.html             # Main entry point HTML file
+├── package.json           # Project manifest and web dependencies
+├── src/
+│   ├── App.css            # Global application overrides
+│   ├── App.jsx            # Routing and core application skeleton
+│   ├── index.css          # Core design tokens, global themes & glassmorphism utilities
+│   ├── main.jsx           # Application mounting and bootstrap
+│   ├── assets/            # Brand SVGs and static image resources
+│   ├── components/        # Shared components (Modals, Custom Navigation, Private Router)
+│   ├── contexts/          # React Contexts for global state (Auth, Theme)
+│   ├── pages/             # Page views (Dashboard, History, Login, Subjects, Timetables)
+│   └── services/          # Services for Firebase config and Firestore queries
+├── vercel.json            # Vercel routing rewrites for React Router
+└── vite.config.js         # Vite configuration with PWA plugin setup
+```

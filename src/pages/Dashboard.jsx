@@ -13,31 +13,26 @@ import SubjectDetailsModal from "../components/SubjectDetailsModal";
 export default function Dashboard() {
     const { currentUser } = useAuth();
 
-    // State
     const [viewDate, setViewDate] = useState(new Date());
     const [currentTime, setCurrentTime] = useState(new Date());
 
-    // Modal State
     const [showModal, setShowModal] = useState(false);
-    const [modalClassData, setModalClassData] = useState(null); // If null, it's an extra class
+    const [modalClassData, setModalClassData] = useState(null); 
     const [showDetailsModal, setShowDetailsModal] = useState(false);
     const [selectedSubject, setSelectedSubject] = useState(null);
 
-    // Data
     const [joinedTimetables, setJoinedTimetables] = useState([]);
     const [dailySchedule, setDailySchedule] = useState([]);
     const [attendanceRecords, setAttendanceRecords] = useState([]);
 
-    // UI
     const [loading, setLoading] = useState(true);
 
-    // Stats
     const [stats, setStats] = useState({ present: 0, total: 0, percentage: 0 });
     const [allSubjects, setAllSubjects] = useState([]);
 
     useEffect(() => {
-        // Clock tick
-        const timer = setInterval(() => setCurrentTime(new Date()), 1000 * 60); // Every minute
+
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000 * 60); 
         return () => clearInterval(timer);
     }, []);
 
@@ -48,11 +43,10 @@ export default function Dashboard() {
     const loadData = async () => {
         setLoading(true);
         try {
-            // 1. Fetch Joined Timetables
+
             const timetables = await getUserTimetables(currentUser.uid);
             setJoinedTimetables(timetables);
 
-            // 2. Build Daily Schedule
             const dayName = format(viewDate, 'EEEE');
             let schedule = [];
 
@@ -69,17 +63,14 @@ export default function Dashboard() {
                 }
             });
 
-            // Sort by start time
             schedule.sort((a, b) => a.startTime.localeCompare(b.startTime));
             setDailySchedule(schedule);
 
-            // 3. Fetch Attendance Records for this User
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
             const attSnap = await getDocs(attQ);
             const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             setAttendanceRecords(records);
 
-            // Calculate Stats
             const valid = records.filter(r => r.status !== 'Class Cancelled' && r.status !== 'Postponed');
             const present = valid.filter(r => r.status === 'Present' || r.status === 'Late').length;
             setStats({
@@ -88,7 +79,6 @@ export default function Dashboard() {
                 percentage: valid.length > 0 ? Math.round((present / valid.length) * 100) : 0
             });
 
-            // 4. Fetch All Subjects (for Extra Class dropdown)
             const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
             const subSnap = await getDocs(subQ);
             const subjectsList = subSnap.docs.map(d => d.data().name).sort();
@@ -103,7 +93,6 @@ export default function Dashboard() {
     const getRecord = (cls) => {
         const dateStr = format(viewDate, 'yyyy-MM-dd');
 
-        // Robust matching: trim and lowercase subject, trim startTime
         const targetSubject = cls.subject.trim().toLowerCase();
         const targetStart = cls.startTime.trim();
 
@@ -118,8 +107,7 @@ export default function Dashboard() {
         });
 
         if (!found && attendanceRecords.length > 0) {
-            // Optional: Debug log only if needed
-            // console.log('🔍 No match found for:', { date: dateStr, subject: cls.subject });
+
         }
 
         return found;
@@ -148,8 +136,6 @@ export default function Dashboard() {
         return h * 60 + m;
     };
 
-    // --- Modal Handlers ---
-
     const openMarkModal = (cls) => {
         setModalClassData({
             ...cls,
@@ -169,7 +155,7 @@ export default function Dashboard() {
             date: format(viewDate, 'yyyy-MM-dd'),
             existingRecordId: existingRecord.id,
             currentStatus: existingRecord.status,
-            topic: existingRecord.topic || "" // Pass topic to modal
+            topic: existingRecord.topic || "" 
         });
         setShowModal(true);
     };
@@ -187,10 +173,9 @@ export default function Dashboard() {
 
             console.log('💾 Full record being saved to Firestore:', fullRecord);
 
-            // Check if this is an update (editing existing record)
             if (recordData.existingRecordId) {
                 const recordRef = doc(db, "attendance_records", recordData.existingRecordId);
-                const { existingRecordId, ...updateData } = fullRecord; // Remove the ID from update data
+                const { existingRecordId, ...updateData } = fullRecord; 
                 await updateDoc(recordRef, updateData);
                 console.log('✅ Record updated successfully! Reloading data...');
             } else {
@@ -204,8 +189,6 @@ export default function Dashboard() {
             alert("Failed to save attendance.");
         }
     };
-
-
 
     const getExtraClassesForDay = () => {
         const dateStr = format(viewDate, 'yyyy-MM-dd');
@@ -233,23 +216,21 @@ export default function Dashboard() {
         openEditModal(pseudoCls, record);
     };
 
-    // --- Feature: Smart Notifications (Unmarked Recent Classes) ---
     const pendingClasses = dailySchedule.filter(cls => {
         const status = getClassStatus(cls);
         const record = currentDayRecord(cls);
         return !record && (status === 'past_open' || status === 'ongoing');
-    }).slice(0, 1); // Show only the most relevant one to avoid clutter
+    }).slice(0, 1); 
 
-    // --- Feature: Global Heatmap Data ---
     const heatmapData = (() => {
         const days = [];
         const today = new Date();
         for (let i = 29; i >= 0; i--) {
             const d = subDays(today, i);
             const dateStr = format(d, 'yyyy-MM-dd');
-            // Find records for this day
+
             const dayRecords = attendanceRecords.filter(r => r.date === dateStr);
-            let intensity = 0; // 0: No data, 1: Low, 2: Med, 3: High
+            let intensity = 0; 
 
             if (dayRecords.length > 0) {
                 const presentCount = dayRecords.filter(r => r.status === 'Present' || r.status === 'Late').length;
@@ -258,8 +239,7 @@ export default function Dashboard() {
                 else if (ratio >= 0.5) intensity = 2;
                 else intensity = 1;
 
-                // Special case: If all absent
-                if (presentCount === 0) intensity = 4; // Red
+                if (presentCount === 0) intensity = 4; 
             }
 
             days.push({ date: d, intensity });
@@ -272,9 +252,7 @@ export default function Dashboard() {
             <Navigation />
             <Container className="pb-5">
 
-
-
-                {/* --- Smart Notification Card --- */}
+                {}
                 {pendingClasses.length > 0 && (
                     <div className="d-flex align-items-center justify-content-between shadow-sm border-0 bg-surface border-start border-5 border-info mb-4 p-3 rounded-3">
                         <div className="d-flex align-items-center gap-3">
@@ -293,25 +271,35 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* Header Stats */}
-                <Row className="mb-4 g-3">
+                {}
+                <Row className="mb-4 g-3 animate-fade-in">
                     <Col md={8}>
-                        <Card className="border-0 shadow-sm bg-primary text-white h-100">
+                        <Card className="card-glass border-0 shadow-sm h-100 no-hover">
                             <Card.Body className="d-flex align-items-center justify-content-between p-4">
                                 <div>
-                                    <h5 className="text-white-50 text-uppercase small fw-bold mb-1">Overall Attendance</h5>
+                                    <h5 className="text-secondary text-uppercase small fw-bold mb-1" style={{ letterSpacing: '0.05em' }}>Overall Attendance</h5>
                                     <div className="d-flex align-items-baseline gap-2">
-                                        <h1 className="display-4 fw-bold mb-0">{stats.percentage}%</h1>
-                                        <span className="h5 opacity-75">Present</span>
+                                        <h1 className="display-4 fw-bold mb-0 text-gradient">{stats.percentage}%</h1>
+                                        <span className="h5 text-success fw-bold">Present</span>
                                     </div>
-                                    <p className="mt-2 mb-0 opacity-75">Total Classes: {stats.total} | Present: {stats.present}</p>
+                                    <p className="mt-2 mb-0 text-secondary small">
+                                        Total: <strong className="text-primary">{stats.total}</strong> | Present: <strong className="text-success">{stats.present}</strong>
+                                    </p>
                                 </div>
-                                <div className="d-none d-md-block">
-                                    <div style={{ width: '100px', height: '100px' }} className="position-relative d-flex align-items-center justify-content-center">
+                                <div className="d-flex">
+                                    <div style={{ width: '80px', height: '80px' }} className="position-relative d-flex align-items-center justify-content-center">
                                         <svg className="position-absolute w-100 h-100" style={{ transform: 'rotate(-90deg)' }}>
-                                            <circle cx="50" cy="50" r="45" stroke="rgba(255,255,255,0.2)" strokeWidth="8" fill="none" />
-                                            <circle cx="50" cy="50" r="45" stroke="#fff" strokeWidth="8" fill="none"
-                                                strokeDasharray="283" strokeDashoffset={283 - (283 * stats.percentage) / 100} />
+                                            <circle cx="40" cy="40" r="32" stroke="var(--border-color)" strokeWidth="6" fill="none" />
+                                            <circle cx="40" cy="40" r="32" stroke="url(#attendanceGradient)" strokeWidth="6" fill="none"
+                                                strokeDasharray="201" strokeDashoffset={201 - (201 * stats.percentage) / 100}
+                                                strokeLinecap="round"
+                                                style={{ transition: 'stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1)' }} />
+                                            <defs>
+                                                <linearGradient id="attendanceGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                                    <stop offset="0%" stopColor="var(--primary-color)" />
+                                                    <stop offset="100%" stopColor="var(--text-secondary)" />
+                                                </linearGradient>
+                                            </defs>
                                         </svg>
                                     </div>
                                 </div>
@@ -319,62 +307,65 @@ export default function Dashboard() {
                         </Card>
                     </Col>
                     <Col md={4}>
-                        <Card className="border-0 shadow-sm h-100 bg-surface">
+                        <Card className="card-glass border-0 shadow-sm h-100 no-hover">
                             <Card.Body className="p-4 d-flex flex-column justify-content-center">
-                                <h6 className="text-muted text-uppercase small fw-bold">Current Time</h6>
-                                <h2 className="fw-bold text-primary mb-1">{format(currentTime, 'hh:mm a')}</h2>
-                                <p className="text-muted mb-0">{format(currentTime, 'EEEE, MMMM do')}</p>
+                                <h6 className="text-secondary text-uppercase small fw-bold mb-2" style={{ letterSpacing: '0.05em' }}>Current Time</h6>
+                                <h2 className="fw-bold text-primary mb-1" style={{ fontSize: '1.8rem' }}>{format(currentTime, 'hh:mm a')}</h2>
+                                <p className="text-muted mb-0 small">{format(currentTime, 'EEEE, MMMM do')}</p>
                             </Card.Body>
                         </Card>
                     </Col>
                 </Row>
 
-                {/* Date Nav & Extra Class Action */}
-                <Row className="mb-4 g-3 align-items-center">
-                    <Col xs={12} md={8}>
-                        <div className="d-flex align-items-center justify-content-between bg-surface p-3 rounded-4 shadow-sm h-100">
-                            <Button variant="light" className="rounded-circle border" onClick={() => setViewDate(subDays(viewDate, 1))}><FaChevronLeft /></Button>
+                <div className="d-flex align-items-center justify-content-between flex-wrap gap-3 mb-4 p-3 rounded-4 card-glass animate-fade-in" style={{ border: '1px solid var(--border-color)', background: 'var(--bg-card)' }}>
+                    <div className="d-flex align-items-center gap-3">
+                        <Button variant="light" className="rounded-circle border p-0" onClick={() => setViewDate(subDays(viewDate, 1))} style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FaChevronLeft size={14} /></Button>
 
-                            <div className="d-flex align-items-center gap-2">
-                                <Form.Control
-                                    type="date"
-                                    value={format(viewDate, 'yyyy-MM-dd')}
-                                    onChange={(e) => {
-                                        if (e.target.value) setViewDate(new Date(e.target.value));
-                                    }}
-                                    className="d-none" // Hidden input, triggered by label/icon
-                                    id="date-picker-nav"
-                                />
-                                <div className="text-center cursor-pointer" onClick={() => document.getElementById('date-picker-nav').showPicker()} style={{ cursor: 'pointer' }}>
-                                    <h5 className="fw-bold mb-0 d-flex align-items-center gap-2 justify-content-center">
-                                        <FaCalendarDay size={18} className="text-primary" />
-                                        {isSameDay(viewDate, new Date()) ? "Today's Schedule" : format(viewDate, 'EEEE, MMM do')}
-                                    </h5>
-                                </div>
+                        <div style={{ position: 'relative' }}>
+                            <Form.Control
+                                type="date"
+                                value={format(viewDate, 'yyyy-MM-dd')}
+                                onChange={(e) => {
+                                    if (e.target.value) setViewDate(new Date(e.target.value));
+                                }}
+                                className="d-none" 
+                                id="date-picker-nav"
+                            />
+                            <div className="cursor-pointer" onClick={() => document.getElementById('date-picker-nav').showPicker()} style={{ cursor: 'pointer' }}>
+                                <h4 className="fw-bold mb-0 d-flex align-items-center gap-2" style={{ letterSpacing: '-0.02em', fontSize: '1.15rem' }}>
+                                    <FaCalendarDay size={16} className="text-primary" />
+                                    {isSameDay(viewDate, new Date()) ? "Today's Schedule" : format(viewDate, 'EEEE, MMM do')}
+                                </h4>
                             </div>
-
-                            <Button variant="light" className="rounded-circle border" onClick={() => setViewDate(addDays(viewDate, 1))}><FaChevronRight /></Button>
                         </div>
-                    </Col>
-                    <Col xs={12} md={4}>
+
+                        <Button variant="light" className="rounded-circle border p-0" onClick={() => setViewDate(addDays(viewDate, 1))} style={{ width: '38px', height: '38px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><FaChevronRight size={14} /></Button>
+                    </div>
+
+                    <div>
                         <Button
                             variant="outline-primary"
-                            className="w-100 h-100 py-3 rounded-4 shadow-sm border-2 fw-bold d-flex align-items-center justify-content-center gap-2"
+                            className="rounded-pill px-3 py-2 fw-bold d-flex align-items-center gap-2"
                             onClick={openExtraClassModal}
+                            style={{ fontSize: '0.85rem' }}
                         >
-                            <FaClock /> Log Extra Class
+                            <FaClock size={13} /> Log Extra Class
                         </Button>
-                    </Col>
-                </Row>
+                    </div>
+                </div>
 
-                {/* Schedule List */}
                 {loading ? (
                     <div className="text-center py-5"><Spinner animation="border" /></div>
                 ) : dailySchedule.length === 0 ? (
-                    <div className="text-center py-5 text-muted border rounded-3 bg-light">
-                        <FaClock size={40} className="mb-3 opacity-25" />
-                        <h5>No classes scheduled</h5>
-                        <p>Enjoy your free day!</p>
+                    <div style={{
+                        border: '2px dashed var(--border-color)',
+                        borderRadius: 20, padding: '4rem 2rem', textAlign: 'center',
+                        color: 'var(--text-tertiary)',
+                        background: 'var(--bg-card)'
+                    }} className="animate-fade-in">
+                        <FaClock size={40} style={{ opacity: 0.3, marginBottom: 16, color: 'var(--primary-color)' }} />
+                        <h5 className="fw-bold text-primary mb-1">No Classes Scheduled</h5>
+                        <p className="small mb-0">Enjoy your free day!</p>
                     </div>
                 ) : (
                     <div className="d-flex flex-column gap-3">
@@ -460,7 +451,7 @@ export default function Dashboard() {
                     </div>
                 )}
 
-                {/* Extra Classes Section */}
+                {}
                 {!loading && (() => {
                     const extraClasses = getExtraClassesForDay();
                     if (extraClasses.length === 0) return null;
@@ -528,7 +519,7 @@ export default function Dashboard() {
                     );
                 })()}
 
-                {/* --- Global Heatmap --- */}
+                {}
                 <div className="mt-5 pt-4 border-top">
                     <h5 className="fw-bold mb-3 d-flex align-items-center gap-2">
                         <FaChartPie className="text-primary" /> Attendance Heatmap (Last 30 Days)
@@ -591,19 +582,6 @@ export default function Dashboard() {
                     }
 
                     /* Heatmap Styles */
-                    .heatmap-box {
-                        width: 24px;
-                        height: 24px;
-                        border-radius: 6px;
-                        background-color: #f1f3f5; /* Default 0 */
-                        transition: all 0.2s;
-                    }
-                    .heatmap-box:hover { transform: scale(1.2); }
-                    .intensity-0 { background-color: #f1f3f5; }
-                    .intensity-1 { background-color: #fff3cd; } /* Low */
-                    .intensity-2 { background-color: #ffe69c; } /* Med */
-                    .intensity-3 { background-color: #198754; } /* High (Green) */
-                    .intensity-4 { background-color: #dc3545; } /* Red (All Absent) */
                 `}
             </style>
         </>

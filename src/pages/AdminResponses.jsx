@@ -14,21 +14,19 @@ export default function AdminResponses() {
     const [searchTerm, setSearchTerm] = useState("");
     const [activeTab, setActiveTab] = useState("responses");
 
-    // Student Detail Modal
     const [showDetail, setShowDetail] = useState(false);
     const [selectedStudent, setSelectedStudent] = useState(null);
     const [studentDetails, setStudentDetails] = useState({
         overallStats: { present: 0, total: 0, percent: 0 },
         subjectStats: [],
-        subjectsList: [], // New state for full subject list
+        subjectsList: [], 
         weeklyStats: [],
         timetables: []
     });
     const [detailLoading, setDetailLoading] = useState(false);
 
-    // Delete Confirmation Modal
     const [showDeleteModal, setShowDeleteModal] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState(null); // { type: 'response'|'timetable', id, name }
+    const [itemToDelete, setItemToDelete] = useState(null); 
     const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
@@ -38,12 +36,11 @@ export default function AdminResponses() {
     const fetchAllData = async () => {
         setLoading(true);
         try {
-            // 1. Fetch ALL Users first
+
             const usersQuery = query(collection(db, "users"));
             const usersSnap = await getDocs(usersQuery);
             const allUsers = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
 
-            // Initialize student map with all users
             const studentMap = {};
             allUsers.forEach(u => {
                 studentMap[u.uid] = {
@@ -56,17 +53,14 @@ export default function AdminResponses() {
                 };
             });
 
-            // 2. Fetch attendance records and OVERLAY data
             const recordsQuery = query(collection(db, "attendance_records"), orderBy("date", "desc"));
             const recordsSnap = await getDocs(recordsQuery);
             const allRecords = recordsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            // Process attendance records to update stats
             allRecords.forEach(r => {
                 const uid = r.uid;
                 if (!uid) return;
 
-                // Sync: If user found in attendance but not in users col, add them
                 if (!studentMap[uid]) {
                     studentMap[uid] = {
                         uid,
@@ -78,7 +72,6 @@ export default function AdminResponses() {
                     };
                 }
 
-                // Update stats
                 if (r.status !== 'Class Cancelled' && r.status !== 'Postponed') {
                     studentMap[uid].totalClasses++;
                     if (r.status === 'Present' || r.status === 'Late') {
@@ -87,13 +80,11 @@ export default function AdminResponses() {
                 }
                 studentMap[uid].subjects.add(r.subject);
 
-                // Keep latest date
                 if (studentMap[uid].lastActive === "Never" || new Date(r.date) > new Date(studentMap[uid].lastActive)) {
                     studentMap[uid].lastActive = r.date;
                 }
             });
 
-            // Convert map to array
             const studentList = Object.values(studentMap).map(s => ({
                 ...s,
                 attendancePercent: s.totalClasses > 0 ? Math.round((s.presentClasses / s.totalClasses) * 100) : 0,
@@ -102,7 +93,6 @@ export default function AdminResponses() {
 
             setStudents(studentList);
 
-            // Fetch all public timetables
             const timetablesQuery = query(collection(db, "public_timetables"));
             const timetablesSnap = await getDocs(timetablesQuery);
             const timetablesData = timetablesSnap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -119,30 +109,26 @@ export default function AdminResponses() {
         setDetailLoading(true);
 
         try {
-            // 1. Fetch ALL Attendance Records for this user
+
             const attQ = query(collection(db, "attendance_records"), where("uid", "==", uid));
             const attSnap = await getDocs(attQ);
             const userRecords = attSnap.docs.map(d => d.data());
 
-            // 2. Fetch Joined Timetables to see Creator Info
             const userTimetables = await getUserTimetables(uid);
 
-            // 3. Fetch User's Subjects List (from 'subjects' collection)
             const subQ = query(collection(db, "subjects"), where("uid", "==", uid));
             const subSnap = await getDocs(subQ);
             const userSubjectsList = subSnap.docs.map(d => d.data().name).sort();
 
-            // 4. Process Stats
             let totalPresent = 0;
             let totalValid = 0;
-            const subjectMap = {}; // { "Math": { present: 0, total: 0 } }
-            const weekMap = {}; // { "2024-W10": { present: 0, total: 0 } }
+            const subjectMap = {}; 
+            const weekMap = {}; 
 
-            // Initialize subject map with user's explicitly added subjects (to ensure 0% subjects appear)
             userSubjectsList.forEach(subName => {
                 subjectMap[subName] = { present: 0, total: 0 };
             });
-            // ... (rest of the loop)
+
             userRecords.forEach(r => {
                 if (r.status === 'Class Cancelled' || r.status === 'Postponed') return;
 
@@ -150,12 +136,10 @@ export default function AdminResponses() {
                 const isPresent = r.status === 'Present' || r.status === 'Late';
                 if (isPresent) totalPresent++;
 
-                // Subject Stats
                 if (!subjectMap[r.subject]) subjectMap[r.subject] = { present: 0, total: 0 };
                 subjectMap[r.subject].total++;
                 if (isPresent) subjectMap[r.subject].present++;
 
-                // Weekly Stats...
                 if (r.date) {
                     const date = new Date(r.date);
                     const weekHash = `${date.getFullYear()}-W${Math.ceil((date.getDate() - 1 + new Date(date.getFullYear(), 0, 1).getDay()) / 7)}`;
@@ -165,7 +149,6 @@ export default function AdminResponses() {
                 }
             });
 
-            // Format Data
             const subjectStats = Object.keys(subjectMap).map(sub => ({
                 subject: sub,
                 present: subjectMap[sub].present,
@@ -174,7 +157,7 @@ export default function AdminResponses() {
             })).sort((a, b) => b.percent - a.percent);
 
             const weeklyStats = Object.values(weekMap).slice(0, 5).map(w => ({
-                label: w.label, // Simplified label
+                label: w.label, 
                 percent: Math.round((w.present / w.total) * 100) || 0
             }));
 
@@ -207,9 +190,9 @@ export default function AdminResponses() {
         setDeleting(true);
         try {
             if (itemToDelete.type === 'response') {
-                // Not supported in user view directly, but keeping logic just in case
+
                 await deleteDoc(doc(db, "attendance_records", itemToDelete.id));
-                // setRecords... 
+
             } else if (itemToDelete.type === 'timetable') {
                 await deleteDoc(doc(db, "public_timetables", itemToDelete.id));
                 setTimetables(prev => prev.filter(t => t.id !== itemToDelete.id));
@@ -225,7 +208,7 @@ export default function AdminResponses() {
 
     const filteredStudents = students.filter(s => {
         const term = searchTerm.toLowerCase();
-        // Date filter might check "Last Active" or be disabled for user list. Let's filter by Last Active date if set.
+
         const matchDate = filterDate ? s.lastActive === filterDate : true;
         const matchSearch = searchTerm
             ? (s.email?.toLowerCase().includes(term))
@@ -279,11 +262,9 @@ export default function AdminResponses() {
         document.body.removeChild(link);
     };
 
-    // Computed Stats for the Dashboard Cards
     const stats = useMemo(() => {
         const totalUsers = students.length;
 
-        // Global Attendance: Sum of all attended / Sum of all held
         const totalHeld = students.reduce((acc, curr) => acc + curr.totalClasses, 0);
         const totalPresent = students.reduce((acc, curr) => acc + curr.presentClasses, 0);
 
@@ -304,7 +285,7 @@ export default function AdminResponses() {
         <div className="admin-page-wrapper">
             <Navigation />
             <Container className="py-4">
-                {/* --- 1. GLASS HEADER & QUICK STATS --- */}
+                {}
                 <header className="admin-header mb-5 p-4 rounded-4 shadow-sm text-white">
                     <Row className="align-items-center">
                         <Col md={6}>
@@ -368,7 +349,7 @@ export default function AdminResponses() {
                     </Col>
                 </Row>
 
-                {/* --- 2. MAIN CONTENT AREA --- */}
+                {}
                 <Tab.Container activeKey={activeTab} onSelect={(k) => setActiveTab(k)}>
                     <div className="admin-tab-container p-2 mb-4">
                         <Nav variant="pills" className="gap-2">
@@ -381,7 +362,7 @@ export default function AdminResponses() {
                         </Nav>
                     </div>
 
-                    {/* Search & Filter Bar */}
+                    {}
                     <Card className="border-0 shadow-sm rounded-4 mb-4 overflow-hidden" style={{ background: 'var(--bg-card)' }}>
                         <div className="p-3 border-bottom" style={{ borderColor: 'var(--border-color)' }}>
                             <Row className="g-3 align-items-center">
@@ -431,7 +412,7 @@ export default function AdminResponses() {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {/* ... (Keep existing loading/empty logic) ... */}
+                                        {}
                                         {loading ? (
                                             <tr><td colSpan="4" className="text-center py-5"><Spinner animation="border" /></td></tr>
                                         ) : filteredStudents.length === 0 ? (
@@ -479,7 +460,7 @@ export default function AdminResponses() {
                             </div>
                         </Tab.Pane>
 
-                        {/* Timetables Tab - Use Grid for responsiveness */}
+                        {}
                         <Tab.Pane eventKey="timetables">
                             <Row className="g-4">
                                 {loading ? (
@@ -513,7 +494,7 @@ export default function AdminResponses() {
                         </Tab.Pane>
                     </Tab.Content>
                 </Tab.Container>
-                {/* Student Detail Modal */}
+                {}
                 <Modal show={showDetail} onHide={() => setShowDetail(false)} size="lg" centered scrollable>
                     <Modal.Header closeButton>
                         <Modal.Title>
@@ -525,7 +506,7 @@ export default function AdminResponses() {
                             <div className="text-center py-5"><Spinner animation="border" /></div>
                         ) : (
                             <div className="d-flex flex-column gap-4">
-                                {/* 1. Overall & Timetable Info */}
+                                {}
                                 <Row className="g-3">
                                     <Col md={6}>
                                         <Card className="h-100 border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
@@ -563,7 +544,7 @@ export default function AdminResponses() {
                                     </Col>
                                 </Row>
 
-                                {/* 2. Weekly Performance (Simplified Bar Representation) */}
+                                {}
                                 <div>
                                     <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaCalendarAlt /> Recent Weekly Performance</h6>
                                     {studentDetails.weeklyStats.length > 0 ? (
@@ -580,7 +561,7 @@ export default function AdminResponses() {
                                     ) : <div className="text-muted">No weekly data available.</div>}
                                 </div>
 
-                                {/* 3. Subject Stats Breakdown */}
+                                {}
                                 <div>
                                     <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaBook /> Subject Breakdown</h6>
                                     <Card className="border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
@@ -626,7 +607,7 @@ export default function AdminResponses() {
                     </Modal.Body>
                 </Modal>
 
-                {/* Delete Confirmation Modal */}
+                {}
                 <Modal show={showDeleteModal} onHide={() => setShowDeleteModal(false)} centered>
                     <Modal.Header closeButton className="border-0 pb-0 bg-danger-subtle">
                         <Modal.Title className="fw-bold d-flex align-items-center gap-2 text-danger">
@@ -677,7 +658,7 @@ export default function AdminResponses() {
 					}
 
 					.admin-header {
-					background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+					background: var(--btn-primary-bg);
 					border: none;
 					}
 
@@ -726,9 +707,9 @@ export default function AdminResponses() {
 					}
 
 					.admin-tab-container .nav-link.active {
-					background: #4e73df !important;
+					background: var(--primary-color) !important;
                     color: white;
-					box-shadow: 0 4px 10px rgba(78, 115, 223, 0.3);
+					box-shadow: 0 4px 10px var(--btn-primary-shadow);
 					}
 
 					/* Search Bar */
@@ -759,7 +740,7 @@ export default function AdminResponses() {
 					.admin-table tbody tr:hover {
 					background-color: var(--bg-body) !important;
 					}
-                    
+
                     /* Ensure table text is visible in dark mode override */
                     .admin-table td, .admin-table th {
                         color: var(--text-primary);
@@ -774,14 +755,9 @@ export default function AdminResponses() {
 					text-transform: uppercase;
 					}
 
-					.status-badge.present { background: rgba(0, 141, 116, 0.1); color: #008d74; }
-					.status-badge.absent { background: rgba(229, 62, 62, 0.1); color: #e53e3e; }
-					.status-badge.late { background: rgba(221, 107, 32, 0.1); color: #dd6b20; }
-                    
-                    [data-theme='dark'] .status-badge.present { background: rgba(0, 141, 116, 0.2); color: #4fd1c5; }
-					[data-theme='dark'] .status-badge.absent { background: rgba(229, 62, 62, 0.2); color: #fc8181; }
-					[data-theme='dark'] .status-badge.late { background: rgba(221, 107, 32, 0.2); color: #f6ad55; }
-
+					.status-badge.present { background: var(--success-glow); color: var(--success-color); }
+					.status-badge.absent { background: var(--danger-glow); color: var(--danger-color); }
+					.status-badge.late { background: var(--warning-glow); color: var(--warning-color); }
 
 					/* Timetable Cards */
 					.timetable-admin-card {

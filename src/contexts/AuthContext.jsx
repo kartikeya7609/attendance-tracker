@@ -6,12 +6,8 @@ import {
     signInWithEmailAndPassword,
     signOut,
     onAuthStateChanged,
-    signInWithPopup,
-    GoogleAuthProvider,
-    signInWithCredential
+    signInWithPopup
 } from "firebase/auth";
-import { FirebaseAuthentication } from '@capacitor-firebase/authentication';
-import { Capacitor } from '@capacitor/core';
 
 const AuthContext = React.createContext();
 
@@ -33,39 +29,16 @@ export function AuthProvider({ children }) {
 
     async function loginWithGoogle() {
         try {
-            if (Capacitor.isNativePlatform()) {
-                // 1. Native Google Sign-In
-                // Using the specific client ID as requested
-                const result = await FirebaseAuthentication.signInWithGoogle({
-                    clientId: '983204092267-3tnr2dcqqtrf5q8csm5fq5hln0ubmhl1.apps.googleusercontent.com',
-                    scopes: ['profile', 'email']
-                });
-
-                // 2. Convert to Firebase credential
-                const credential = GoogleAuthProvider.credential(
-                    result.credential?.idToken
-                );
-
-                // 3. Firebase login (signInWithCredential is used, NOT signInWithPopup)
-                return await signInWithCredential(auth, credential);
-            } else {
-                // Use popup for web
-                console.log('Using web popup...');
-                return await signInWithPopup(auth, googleProvider);
-            }
+            console.log('Using web popup...');
+            return await signInWithPopup(auth, googleProvider);
         } catch (error) {
             console.error('Google Sign-In Error:', error);
-            // DIAGNOSTIC ALERT: Show the full error on the phone screen
             alert(`Login Failed:\n${error.message}\nCode: ${error.code}`);
             throw error;
         }
     }
 
     function logout() {
-        // Sign out from native Firebase Authentication on native platforms
-        if (Capacitor.isNativePlatform()) {
-            FirebaseAuthentication.signOut().catch(err => console.error('Native signout error:', err));
-        }
         return signOut(auth);
     }
 
