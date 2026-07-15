@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Spinner } from 'react-bootstrap';
+import { Container, Row, Col, Spinner, Alert } from 'react-bootstrap';
 import Navigation from '../components/Navigation';
 import { getAllTimetables, joinTimetable, getUserCreatedTimetables } from '../services/timetableService';
 import { useAuth } from '../contexts/AuthContext';
@@ -180,6 +180,7 @@ export default function TimetableDiscovery() {
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
     const [joining, setJoining] = useState(null);
+    const [joinError, setJoinError] = useState('');
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
@@ -199,12 +200,18 @@ export default function TimetableDiscovery() {
     };
 
     const handleJoin = async (t) => {
-        if (t.attendees?.includes(currentUser.uid)) { alert(`Already joined ${t.name}!`); return; }
+        if (t.attendees?.includes(currentUser.uid)) {
+            setJoinError(`You have already joined "${t.name}". Check your dashboard.`);
+            return;
+        }
         setJoining(t.id);
+        setJoinError('');
         try {
             await joinTimetable(currentUser.uid, t.code);
             await loadAllData();
-        } catch (e) { alert('Failed to join: ' + e.message); }
+        } catch (e) {
+            setJoinError(`Failed to join "${t.name}": ${e.message}`);
+        }
         setJoining(null);
     };
 
@@ -262,6 +269,13 @@ export default function TimetableDiscovery() {
                     />
                 </div>
 
+
+                {joinError && (
+                    <Alert variant="danger" dismissible onClose={() => setJoinError('')} className="rounded-3">
+                        {joinError}
+                    </Alert>
+                )}
+
                 {!loading && createdTimetables.length > 0 && (
                     <div style={{ marginBottom: '2.5rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: '1rem' }}>
@@ -277,6 +291,7 @@ export default function TimetableDiscovery() {
                                     <TimetableCard
                                         t={t} isOwn={true}
                                         isJoined={t.attendees?.includes(currentUser.uid)}
+
                                         onEdit={() => navigate(`/edit-timetable/${t.id}`)}
                                     />
                                 </Col>

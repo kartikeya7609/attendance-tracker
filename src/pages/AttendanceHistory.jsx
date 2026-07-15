@@ -5,13 +5,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../services/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { format } from 'date-fns';
-import { FaFilter, FaSearch, FaCalendarAlt, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationCircle, FaEraser } from 'react-icons/fa';
+import { FaFilter, FaSearch, FaCalendarAlt, FaCheckCircle, FaTimesCircle, FaClock, FaExclamationCircle, FaEraser, FaUmbrellaBeach } from 'react-icons/fa';
+import { ensureUserProfile, getUserHolidays } from '../services/userData';
 
 const statusConfig = {
     Present:  { color: 'var(--success-color)', bg: 'var(--success-glow)', glow: 'var(--success-glow)',  icon: FaCheckCircle  },
     Absent:   { color: 'var(--danger-color)', bg: 'var(--danger-glow)',  glow: 'var(--danger-glow)',   icon: FaTimesCircle  },
     Late:     { color: 'var(--warning-color)', bg: 'var(--warning-glow)', glow: 'var(--warning-glow)',  icon: FaClock        },
     Leave:    { color: 'var(--primary-color)', bg: 'rgba(var(--primary-rgb), 0.15)', glow: 'rgba(var(--primary-rgb), 0.15)', icon: FaExclamationCircle },
+    Holiday:  { color: 'var(--success-color)', bg: 'var(--success-glow)', glow: 'var(--success-glow)', icon: FaUmbrellaBeach },
 };
 
 export default function AttendanceHistory() {
@@ -21,25 +23,39 @@ export default function AttendanceHistory() {
     const [filterDate, setFilterDate] = useState('');
     const [filterSubject, setFilterSubject] = useState('');
 
-    useEffect(() => {
-        fetchHistory();
-    }, [currentUser]);
-
-    const fetchHistory = async () => {
+    async function fetchHistory() {
         setLoading(true);
         try {
+            const profile = await ensureUserProfile(currentUser);
             const snap = await getDocs(query(
                 collection(db, 'attendance_records'),
                 where('uid', '==', currentUser.uid)
             ));
-            const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const holidays = await getUserHolidays(currentUser.uid);
+            const semesterStart = profile.semesterStartDate || '';
+            const data = [
+                ...snap.docs.map(d => ({ id: d.id, ...d.data() })),
+                ...holidays.map(h => ({
+                    id: `holiday-${h.id}`,
+                    date: h.date,
+                    subject: h.reason || 'Holiday',
+                    status: 'Holiday',
+                    startTime: '',
+                    endTime: '',
+                    timestamp: h.createdAt
+                }))
+            ].filter(record => !semesterStart || record.date >= semesterStart);
             data.sort((a, b) => new Date(b.date) - new Date(a.date) || a.startTime.localeCompare(b.startTime));
             setRecords(data);
         } catch (err) {
             console.error('History Error', err);
         }
         setLoading(false);
-    };
+    }
+
+    useEffect(() => {
+        void Promise.resolve().then(fetchHistory);
+    }, [currentUser]);
 
     const filtered = records.filter(r => {
         if (filterDate && r.date !== filterDate) return false;
@@ -51,6 +67,7 @@ export default function AttendanceHistory() {
         present: records.filter(r => r.status === 'Present').length,
         absent:  records.filter(r => r.status === 'Absent').length,
         late:    records.filter(r => r.status === 'Late').length,
+        holidays: records.filter(r => r.status === 'Holiday').length,
     };
 
     return (
@@ -68,6 +85,7 @@ export default function AttendanceHistory() {
                         { label: 'Present', val: stats.present, color: 'var(--success-color)', bg: 'var(--success-glow)' },
                         { label: 'Absent',  val: stats.absent,  color: 'var(--danger-color)', bg: 'var(--danger-glow)'  },
                         { label: 'Late',    val: stats.late,    color: 'var(--warning-color)', bg: 'var(--warning-glow)' },
+                        { label: 'Holidays', val: stats.holidays, color: 'var(--success-color)', bg: 'var(--success-glow)' },
                     ].map(({ label, val, color, bg }) => (
                         <div key={label} style={{
                             flex: '1 1 100px', minWidth: 100,

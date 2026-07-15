@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaCalendarDay, FaBook, FaClock, FaHistory, FaUserShield } from 'react-icons/fa';
+import { FaCalendarDay, FaBook, FaClock, FaHistory, FaUserShield, FaUser } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function MobileNav() {
@@ -13,18 +13,19 @@ export default function MobileNav() {
     );
 
     const navItems = [
-        { to: '/',          icon: FaCalendarDay, label: 'Dashboard' },
-        { to: '/subjects',  icon: FaBook,        label: 'Subjects'  },
-        { to: '/timetables',icon: FaClock,       label: 'Timetable' },
-        { to: '/history',   icon: FaHistory,     label: 'History'   },
-        ...(isAdmin ? [{ to: '/admin/responses', icon: FaUserShield, label: 'Admin', adminOnly: true }] : []),
+        { to: '/',          icon: <FaCalendarDay size={20} />, label: 'Dashboard' },
+        { to: '/subjects',  icon: <FaBook size={20} />,        label: 'Subjects'  },
+        { to: '/timetables',icon: <FaClock size={20} />,       label: 'Timetable' },
+        { to: '/history',   icon: <FaHistory size={20} />,     label: 'History'   },
+        { to: '/profile',   icon: <FaUser size={20} />,        label: 'Profile'   },
+        ...(isAdmin ? [{ to: '/admin/responses', icon: <FaUserShield size={20} />, label: 'Admin', adminOnly: true }] : []),
     ];
 
     return (
         <>
             <nav className="mobile-bottom-nav">
                 <div className="mobile-nav-inner">
-                    {navItems.map(({ to, icon: Icon, label, adminOnly }) => {
+                    {navItems.map(({ to, icon, label, adminOnly }) => {
                         const isActive = location.pathname === to;
                         return (
                             <Link
@@ -34,7 +35,7 @@ export default function MobileNav() {
                                 aria-label={label}
                             >
                                 <span className="mobile-nav-icon-wrap">
-                                    <Icon size={20} />
+                                    {icon}
                                     {isActive && <span className="nav-active-dot" />}
                                 </span>
                                 <span className="mobile-nav-label">{label}</span>
@@ -56,7 +57,7 @@ export default function MobileNav() {
                     padding-bottom: env(safe-area-inset-bottom, 8px);
                 }
 
-                @media (max-width: 991px) {
+                @media (max-width: 700px) {
                     .mobile-bottom-nav { display: block; }
                     body { padding-bottom: 80px; }
                 }

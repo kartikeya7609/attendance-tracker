@@ -164,7 +164,7 @@ export default function CreateTimetable() {
                 await updateTimetable(id, {
                     name: timetableName,
                     schedule: finalSchedule
-                });
+                }, currentUser.uid);
                 setSuccess(`Timetable updated successfully!`);
             } else {
                 const result = await createTimetable(currentUser, {

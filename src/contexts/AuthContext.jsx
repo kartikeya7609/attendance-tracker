@@ -33,8 +33,7 @@ export function AuthProvider({ children }) {
             return await signInWithPopup(auth, googleProvider);
         } catch (error) {
             console.error('Google Sign-In Error:', error);
-            alert(`Login Failed:\n${error.message}\nCode: ${error.code}`);
-            throw error;
+            throw error;  // Login page handles this with its own inline error state
         }
     }
 

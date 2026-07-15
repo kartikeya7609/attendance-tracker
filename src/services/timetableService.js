@@ -60,6 +60,10 @@ export const joinTimetable = async (uid, code) => {
             joinedAt: Timestamp.now()
         });
 
+        // Set semesterStartDate to today on join
+        const todayStr = new Date().toISOString().slice(0, 10);
+        await setDoc(doc(db, "users", uid), { semesterStartDate: todayStr }, { merge: true });
+
         await updateDoc(doc(db, "public_timetables", timetableId), {
             attendees: arrayUnion(uid)
         });
@@ -168,6 +172,10 @@ export const createPrivateTimetable = async (user, timetableData) => {
         joinedAt: Timestamp.now()
     });
 
+    // Set semesterStartDate to today on create
+    const todayStr = new Date().toISOString().slice(0, 10);
+    await setDoc(doc(db, "users", user.uid), { semesterStartDate: todayStr }, { merge: true });
+
     return { id: docRef.id };
 };
 
@@ -180,7 +188,7 @@ export const getUserCreatedTimetables = async (uid) => {
     return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 };
 
-export const updateTimetable = async (timetableId, timetableData) => {
+export const updateTimetable = async (timetableId, timetableData, updaterUid) => {
     const timetableRef = doc(db, "public_timetables", timetableId);
 
     await updateDoc(timetableRef, {
@@ -188,6 +196,12 @@ export const updateTimetable = async (timetableId, timetableData) => {
         schedule: timetableData.schedule,
         updatedAt: Timestamp.now()
     });
+
+    if (updaterUid) {
+        // Set semesterStartDate to today on edit
+        const todayStr = new Date().toISOString().slice(0, 10);
+        await setDoc(doc(db, "users", updaterUid), { semesterStartDate: todayStr }, { merge: true });
+    }
 
     return { id: timetableId };
 };

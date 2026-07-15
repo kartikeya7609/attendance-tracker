@@ -4,11 +4,12 @@ import { Container, Button, Form, Modal, Alert, Row, Col, Card, ProgressBar, Spi
 import Navigation from "../components/Navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { db } from "../services/firebase";
-import { collection, addDoc, query, where, getDocs, deleteDoc, doc, writeBatch, updateDoc, Timestamp } from "firebase/firestore";
-import { FaTrash, FaPlus, FaBook, FaChartBar, FaExclamationTriangle, FaSync, FaClock, FaSignOutAlt, FaUsers, FaEdit } from "react-icons/fa";
+import { collection, addDoc, query, where, getDocs, deleteDoc, doc, writeBatch, updateDoc, Timestamp, setDoc } from "firebase/firestore";
+import { FaTrash, FaPlus, FaBook, FaChartBar, FaExclamationTriangle, FaSync, FaClock, FaSignOutAlt, FaUsers, FaEdit, FaMedkit } from "react-icons/fa";
 import { getUserTimetables, leaveTimetable } from "../services/timetableService";
 import SubjectDetailsModal from "../components/SubjectDetailsModal";
 import AttendanceModal from "../components/AttendanceModal";
+import { ensureUserProfile, getActiveAttendanceRecords, isAttendanceCountingRecord, isPresentRecord, getSubjectSettings, setSubjectSetting, isRecordCounting, isRecordPresent } from "../services/userData";
 
 export default function Subjects() {
     const { currentUser } = useAuth();
@@ -32,12 +33,13 @@ export default function Subjects() {
     const [showAttendanceModal, setShowAttendanceModal] = useState(false);
     const [modalClassData, setModalClassData] = useState(null);
     const [allSubjectsList, setAllSubjectsList] = useState([]);
+    const [successMsg, setSuccessMsg] = useState("");
+    const [subjectSettings, setSubjectSettings] = useState({});
+    // delete confirm modal
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [subjectToDelete, setSubjectToDelete] = useState(null);
 
-    useEffect(() => {
-        fetchData();
-    }, [currentUser]);
-
-    const fetchData = async () => {
+    async function fetchData() {
         setLoading(true);
         try {
 
@@ -45,8 +47,13 @@ export default function Subjects() {
             const subSnap = await getDocs(subQ);
             const subList = subSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-            const timetables = await getUserTimetables(currentUser.uid);
+            const [timetables, profile, settings] = await Promise.all([
+                getUserTimetables(currentUser.uid),
+                ensureUserProfile(currentUser),
+                getSubjectSettings(currentUser.uid)
+            ]);
             setJoinedTimetables(timetables);
+            setSubjectSettings(settings);
 
             const existingSubjectNames = new Set(subList.map(s => s.name));
             const timetableSubjects = new Set();
@@ -75,9 +82,7 @@ export default function Subjects() {
             setSubjects(subList);
             setAllSubjectsList(subList.map(s => s.name).sort());
 
-            const attQ = query(collection(db, "attendance_records"), where("uid", "==", currentUser.uid));
-            const attSnap = await getDocs(attQ);
-            const records = attSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            const records = await getActiveAttendanceRecords(currentUser.uid, profile.semesterStartDate);
             setAttendanceRecords(records);
 
             const stats = {};
@@ -86,15 +91,13 @@ export default function Subjects() {
                 stats[s.name] = { total: 0, present: 0 };
             });
 
-            attSnap.forEach(doc => {
-                const data = doc.data();
-
-                if (data.status !== 'Class Cancelled' && data.status !== 'Postponed') {
+            records.forEach(data => {
+                if (isRecordCounting(data, settings)) {
                     const subName = data.subject;
                     if (!stats[subName]) stats[subName] = { total: 0, present: 0 };
 
                     stats[subName].total += 1;
-                    if (data.status === 'Present' || data.status === 'Late') {
+                    if (isRecordPresent(data, settings)) {
                         stats[subName].present += 1;
                     }
                 }
@@ -107,7 +110,11 @@ export default function Subjects() {
             setError("Failed to load data");
         }
         setLoading(false);
-    };
+    }
+
+    useEffect(() => {
+        void Promise.resolve().then(fetchData);
+    }, [currentUser]);
 
     const handleAddSubject = async (e) => {
         e.preventDefault();
@@ -123,16 +130,25 @@ export default function Subjects() {
             setShowModal(false);
             fetchData();
         } catch (err) {
+            console.error(err);
             setError("Failed to add subject");
         }
     };
 
-    const handleDelete = async (id) => {
-        if (!window.confirm("Delete this subject? This will not delete attendance records but remove it from this list.")) return;
+    const handleDelete = async (id, name) => {
+        setSubjectToDelete({ id, name });
+        setShowDeleteConfirm(true);
+    };
+
+    const confirmDelete = async () => {
+        if (!subjectToDelete) return;
         try {
-            await deleteDoc(doc(db, "subjects", id));
+            await deleteDoc(doc(db, "subjects", subjectToDelete.id));
+            setShowDeleteConfirm(false);
+            setSubjectToDelete(null);
             fetchData();
         } catch (err) {
+            console.error(err);
             setError("Failed to delete subject");
         }
     };
@@ -157,11 +173,16 @@ export default function Subjects() {
             });
 
             await batch.commit();
+            await setDoc(doc(db, "users", currentUser.uid), {
+                semesterStartDate: new Date().toISOString().slice(0, 10),
+                semesterResetAt: Timestamp.now()
+            }, { merge: true });
 
             await fetchData();
             setShowResetModal(false);
             setConfirmText("");
-            alert("Semester reset successfully! All attendance records have been cleared.");
+            setSuccessMsg("Semester reset successfully! All attendance records have been cleared.");
+            setTimeout(() => setSuccessMsg(""), 5000);
         } catch (err) {
             console.error(err);
             setError("Failed to reset semester. Please try again.");
@@ -183,7 +204,8 @@ export default function Subjects() {
             await fetchData();
             setShowLeaveTimetableModal(false);
             setSelectedTimetable(null);
-            alert(`Successfully left "${selectedTimetable.name}"`);
+            setSuccessMsg(`Successfully left "${selectedTimetable.name}". Your subjects and records are kept.`);
+            setTimeout(() => setSuccessMsg(""), 5000);
         } catch (err) {
             console.error(err);
             setError("Failed to leave timetable. Please try again.");
@@ -235,7 +257,7 @@ export default function Subjects() {
 
             if (recordData.existingRecordId) {
                 const recordRef = doc(db, "attendance_records", recordData.existingRecordId);
-                const { existingRecordId, ...updateData } = fullRecord;
+                const { existingRecordId: _existingRecordId, ...updateData } = fullRecord;
                 await updateDoc(recordRef, updateData);
             } else {
                 await addDoc(collection(db, "attendance_records"), fullRecord);
@@ -245,7 +267,7 @@ export default function Subjects() {
             setShowAttendanceModal(false);
         } catch (error) {
             console.error('❌ Failed to save attendance:', error);
-            alert("Failed to save attendance.");
+            setError("Failed to save attendance.");
         }
     };
 
@@ -276,6 +298,7 @@ export default function Subjects() {
                     </div>
                 </div>
                 {error && <Alert variant="danger" dismissible onClose={() => setError("")}>{error}</Alert>}
+                {successMsg && <Alert variant="success" dismissible onClose={() => setSuccessMsg("")}>{successMsg}</Alert>}
 
                 <Row className="g-4">
                     {/* Left Column: My Subjects */}
@@ -331,10 +354,43 @@ export default function Subjects() {
                                                             size="sm"
                                                             className="text-danger rounded-circle p-0"
                                                             style={{ width: '28px', height: '28px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                                                            onClick={(e) => { e.stopPropagation(); handleDelete(sub.id); }}
+                                                            onClick={(e) => { e.stopPropagation(); handleDelete(sub.id, sub.name); }}
                                                         >
                                                             <FaTrash size={10} />
                                                         </Button>
+                                                    </div>
+
+                                                    <div className="mt-3 mb-3" onClick={(e) => e.stopPropagation()}>
+                                                        <Form.Label className="small text-muted fw-bold mb-1 d-flex align-items-center gap-1">
+                                                            <FaMedkit size={12} className="text-info" /> Medical Leave Mode
+                                                        </Form.Label>
+                                                        <Form.Select
+                                                            size="sm"
+                                                            value={subjectSettings[sub.name]?.medicalLeaveMode || "present"}
+                                                            onChange={async (e) => {
+                                                                const val = e.target.value;
+                                                                try {
+                                                                    await setSubjectSetting(currentUser.uid, sub.name, "medicalLeaveMode", val);
+                                                                    setSubjectSettings(prev => ({
+                                                                        ...prev,
+                                                                        [sub.name]: {
+                                                                            ...(prev[sub.name] || {}),
+                                                                            medicalLeaveMode: val
+                                                                        }
+                                                                    }));
+                                                                    // Re-run stats calculation
+                                                                    setTimeout(fetchData, 100);
+                                                                } catch (err) {
+                                                                    console.error(err);
+                                                                }
+                                                            }}
+                                                            className="rounded-3 border-secondary-subtle"
+                                                            style={{ fontSize: '0.8rem' }}
+                                                        >
+                                                            <option value="present">🏥 Counts as Present</option>
+                                                            <option value="absent">❌ Counts as Absent</option>
+                                                            <option value="exclude">🚫 Exempt (Exclude class)</option>
+                                                        </Form.Select>
                                                     </div>
 
                                                     <div className="mt-auto">
@@ -342,20 +398,20 @@ export default function Subjects() {
                                                             <h3 className={`fw-bold mb-0 text-${getVariant(percent)}`} style={{ fontSize: '1.4rem' }}>{percent}%</h3>
                                                             <div className="text-muted small fw-bold">
                                                                 {stat.present} / {stat.total} Classes
-                                                            </div>
-                                                        </div>
-                                                        <ProgressBar
-                                                            now={percent}
-                                                            variant={getVariant(percent)}
-                                                            style={{ height: '6px', borderRadius: '10px' }}
-                                                            className="bg-light"
-                                                        />
-                                                        <div className="mt-2 d-flex justify-content-between">
-                                                            <Badge bg={percent >= 75 ? 'success' : 'danger'} bg-opacity="10" className={`text-${percent >= 75 ? 'success' : 'danger'} bg-opacity-10 px-2 py-1 rounded-pill fw-normal small`} style={{ fontSize: '0.7rem' }}>
-                                                                {percent >= 75 ? 'On Track' : 'At Risk'}
-                                                            </Badge>
-                                                        </div>
-                                                    </div>
+                                                             </div>
+                                                         </div>
+                                                         <ProgressBar
+                                                             now={percent}
+                                                             variant={getVariant(percent)}
+                                                             style={{ height: '6px', borderRadius: '10px' }}
+                                                             className="bg-light"
+                                                         />
+                                                         <div className="mt-2 d-flex justify-content-between">
+                                                             <Badge bg={percent >= 75 ? 'success' : 'danger'} bg-opacity="10" className={`text-${percent >= 75 ? 'success' : 'danger'} bg-opacity-10 px-2 py-1 rounded-pill fw-normal small`} style={{ fontSize: '0.7rem' }}>
+                                                                 {percent >= 75 ? 'On Track' : 'At Risk'}
+                                                             </Badge>
+                                                         </div>
+                                                     </div>
                                                 </Card.Body>
                                             </Card>
                                         </Col>
@@ -608,6 +664,27 @@ export default function Subjects() {
                     subjects={allSubjectsList}
                     onSave={handleSaveRecord}
                 />
+
+                {/* Delete Subject Confirmation Modal */}
+                <Modal show={showDeleteConfirm} onHide={() => setShowDeleteConfirm(false)} centered size="sm">
+                    <Modal.Header closeButton className="border-0 pb-0">
+                        <Modal.Title className="fw-bold">Delete Subject?</Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body className="pt-1">
+                        <p className="mb-0">
+                            Remove <strong>{subjectToDelete?.name}</strong> from your subject list?
+                        </p>
+                        <p className="small text-muted mt-2 mb-0">
+                            Your attendance records for this subject will not be deleted.
+                        </p>
+                    </Modal.Body>
+                    <Modal.Footer className="border-0 pt-0">
+                        <Button variant="light" className="rounded-pill" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
+                        <Button variant="danger" className="rounded-pill px-4" onClick={confirmDelete}>
+                            <FaTrash className="me-2" size={12} /> Delete
+                        </Button>
+                    </Modal.Footer>
+                </Modal>
             </Container>
 
             <style>
