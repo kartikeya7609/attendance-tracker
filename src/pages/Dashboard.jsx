@@ -20,6 +20,7 @@ import {
     FaSave, FaMedkit, FaBook
 } from "react-icons/fa";
 import SubjectDetailsModal from "../components/SubjectDetailsModal";
+import { checkAndTriggerAttendanceWarning } from "../services/notificationService";
 import {
     ensureUserProfile, getActiveAttendanceRecords, getUserHolidays,
     isAttendanceCountingRecord, isPresentRecord, saveSemesterDates
@@ -160,7 +161,11 @@ export default function Dashboard() {
     }, []);
 
     useEffect(() => {
+        window.__dashboardRefresh = loadData;
         void Promise.resolve().then(loadData);
+        return () => {
+            delete window.__dashboardRefresh;
+        };
     }, [currentUser, viewDate]);
 
     /* ── Helpers ─────────────────────────────────────────────── */
@@ -237,6 +242,20 @@ export default function Dashboard() {
                 );
                 toast(`✅ Attendance updated — ${recordData.subject} marked as ${recordData.status} for ${recordData.date}.`, "success");
             } else {
+                // Duplicate check
+                const targetSubject = recordData.subject.trim().toLowerCase();
+                const targetStart = recordData.startTime.trim();
+                const targetDate = recordData.date;
+                const exists = attendanceRecords.some(r => 
+                    r.date === targetDate &&
+                    r.subject.trim().toLowerCase() === targetSubject &&
+                    r.startTime.trim() === targetStart
+                );
+                if (exists) {
+                    toast(`⚠️ Attendance already logged for this class.`, "warning");
+                    return;
+                }
+
                 const docRef = await addDoc(collection(db, "attendance_records"), fullRecord);
                 updatedRecords = [...attendanceRecords, { id: docRef.id, ...fullRecord }];
                 const isMed = recordData.status === "Medical Leave";
@@ -277,6 +296,19 @@ export default function Dashboard() {
     /* ── Quick attendance ────────────────────────────────────── */
     const handleQuickAttendance = async (cls, status) => {
         try {
+            const targetSubject = cls.subject.trim().toLowerCase();
+            const targetStart = cls.startTime.trim();
+            const targetDate = format(viewDate, "yyyy-MM-dd");
+            const exists = attendanceRecords.some(r => 
+                r.date === targetDate &&
+                r.subject.trim().toLowerCase() === targetSubject &&
+                r.startTime.trim() === targetStart
+            );
+            if (exists) {
+                toast(`⚠️ Already marked for this time slot.`, "warning");
+                return;
+            }
+
             const fullRecord = {
                 uid:   currentUser.uid,
                 email: currentUser.email,
@@ -307,11 +339,16 @@ export default function Dashboard() {
         const valid    = records.filter(r => isAttendanceCountingRecord(r) || r.status === "Medical Leave");
         const present  = records.filter(r => isPresentRecord(r)).length;
         const medPres  = records.filter(r => r.status === "Medical Leave").length;
-        setStats({
+        const percentage = valid.length > 0 ? Math.round(((present + medPres) / valid.length) * 100) : 0;
+        const statsData = {
             present: present + medPres,
             total:   valid.length,
-            percentage: valid.length > 0 ? Math.round(((present + medPres) / valid.length) * 100) : 0
-        });
+            percentage
+        };
+        setStats(statsData);
+        if (currentUser) {
+            checkAndTriggerAttendanceWarning(currentUser.uid, percentage, statsData);
+        }
     };
 
     /* ── Mark holiday (via type modal) ──────────────────────── */
@@ -473,7 +510,7 @@ export default function Dashboard() {
                                 </p>
                             </div>
                         </div>
-                        <div className="d-flex gap-2">
+                        <div className="d-flex flex-wrap gap-2">
                             <Button size="sm" variant="success" className="rounded-pill px-3"
                                 onClick={() => handleQuickAttendance(pendingClasses[0], "Present")}>✅ Yes, I attended</Button>
                             <Button size="sm" variant="outline-danger" className="rounded-pill px-3"
@@ -488,7 +525,7 @@ export default function Dashboard() {
                 <Row className="mb-4 g-3 animate-fade-in">
                     <Col md={8}>
                         <Card className="card-glass border-0 shadow-sm h-100 no-hover">
-                            <Card.Body className="d-flex align-items-center justify-content-between p-4">
+                            <Card.Body className="d-flex flex-column flex-sm-row align-items-start align-items-sm-center justify-content-between p-4 gap-3">
                                 <div>
                                     <h5 className="text-secondary text-uppercase small fw-bold mb-1" style={{ letterSpacing: "0.05em" }}>
                                         Overall Attendance
@@ -498,8 +535,8 @@ export default function Dashboard() {
                                             </span>
                                         )}
                                     </h5>
-                                    <div className="d-flex align-items-baseline gap-2">
-                                        <h1 className="display-4 fw-bold mb-0 text-gradient">{stats.percentage}%</h1>
+                                    <div className="d-flex align-items-baseline gap-2 flex-wrap">
+                                        <h1 className="fw-bold mb-0 text-gradient" style={{ fontSize: "calc(1.8rem + 1.8vw)", lineHeight: 1 }}>{stats.percentage}%</h1>
                                         <span className="h5 text-success fw-bold">Present</span>
                                     </div>
                                     <p className="mt-2 mb-0 text-secondary small">

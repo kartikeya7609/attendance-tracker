@@ -52,39 +52,37 @@ export default function MobileNav() {
                     bottom: 0;
                     left: 0;
                     right: 0;
-                    z-index: 2000;
-                    padding: 0 8px;
-                    padding-bottom: env(safe-area-inset-bottom, 8px);
+                    z-index: 1030;
+                    padding: 0;
+                    padding-bottom: env(safe-area-inset-bottom, 0px);
                 }
 
                 @media (max-width: 700px) {
                     .mobile-bottom-nav { display: block; }
-                    body { padding-bottom: 80px; }
+                    body { padding-bottom: 75px; }
                 }
 
                 .mobile-nav-inner {
                     display: flex;
                     align-items: center;
                     justify-content: space-around;
-                    background: rgba(15, 14, 23, 0.85);
+                    background: rgba(15, 14, 23, 0.95);
                     backdrop-filter: blur(24px) saturate(1.8);
                     -webkit-backdrop-filter: blur(24px) saturate(1.8);
-                    border: 1px solid rgba(255,255,255,0.08);
-                    border-radius: 22px;
+                    border-top: 1px solid rgba(255,255,255,0.08);
+                    border-radius: 0;
                     padding: 8px 4px;
-                    margin: 8px 0;
-                    box-shadow:
-                        0 -4px 30px rgba(0,0,0,0.4),
-                        0 0 0 1px rgba(99,102,241,0.08),
-                        inset 0 1px 0 rgba(255,255,255,0.06);
+                    margin: 0;
+                    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
                 }
 
                 [data-theme='light'] .mobile-nav-inner {
-                    background: rgba(255,255,255,0.88);
-                    border-color: rgba(0,0,0,0.06);
-                    box-shadow:
-                        0 -4px 30px rgba(0,0,0,0.1),
-                        0 0 0 1px rgba(99,102,241,0.06);
+                    background: rgba(255,255,255,0.96);
+                    border-top: 1px solid rgba(0,0,0,0.06);
+                    border-left: none;
+                    border-right: none;
+                    border-bottom: none;
+                    box-shadow: 0 -4px 20px rgba(0,0,0,0.05);
                 }
 
                 .mobile-nav-item {
@@ -93,12 +91,22 @@ export default function MobileNav() {
                     align-items: center;
                     justify-content: center;
                     gap: 3px;
-                    padding: 6px 14px;
+                    padding: 6px 10px;
                     border-radius: 14px;
                     text-decoration: none;
                     transition: all 0.22s cubic-bezier(0.4,0,0.2,1);
-                    min-width: 52px;
+                    min-width: 46px;
                     position: relative;
+                }
+
+                @media (max-width: 360px) {
+                    .mobile-nav-item {
+                        padding: 6px 4px;
+                        min-width: 38px;
+                    }
+                    .mobile-nav-label {
+                        font-size: 0.55rem;
+                    }
                 }
 
                 .mobile-nav-icon-wrap {

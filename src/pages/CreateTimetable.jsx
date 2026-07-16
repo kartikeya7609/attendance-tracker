@@ -60,7 +60,15 @@ export default function CreateTimetable() {
                 try {
                     const draft = JSON.parse(savedDraft);
                     setTimetableName(draft.name);
-                    setScheduleData(draft.schedule);
+                    setScheduleData({
+                        Monday: [],
+                        Tuesday: [],
+                        Wednesday: [],
+                        Thursday: [],
+                        Friday: [],
+                        Saturday: [],
+                        ...(draft.schedule || {})
+                    });
                 } catch (err) {
                     console.error("Failed to load draft", err);
                 }
@@ -83,13 +91,14 @@ export default function CreateTimetable() {
                 }
 
                 setTimetableName(data.name);
-                setScheduleData(data.schedule || {
+                setScheduleData({
                     Monday: [],
                     Tuesday: [],
                     Wednesday: [],
                     Thursday: [],
                     Friday: [],
-                    Saturday: []
+                    Saturday: [],
+                    ...(data.schedule || {})
                 });
             } else {
                 setMessage("Timetable not found");
@@ -118,7 +127,7 @@ export default function CreateTimetable() {
         setScheduleData(prev => ({
             ...prev,
             [activeDay]: [
-                ...prev[activeDay],
+                ...(prev[activeDay] || []),
                 { startTime: "09:00", endTime: "10:00", subject: "" }
             ]
         }));
@@ -132,14 +141,16 @@ export default function CreateTimetable() {
     };
 
     const handleRemoveTimeSlot = (index) => {
-        const updatedDay = [...scheduleData[activeDay]];
+        const updatedDay = [...(scheduleData[activeDay] || [])];
         updatedDay.splice(index, 1);
         setScheduleData(prev => ({ ...prev, [activeDay]: updatedDay }));
     };
 
     const handleUpdateSlot = (index, field, value) => {
-        const updatedDay = [...scheduleData[activeDay]];
-        updatedDay[index][field] = value;
+        const updatedDay = [...(scheduleData[activeDay] || [])];
+        if (updatedDay[index]) {
+            updatedDay[index][field] = value;
+        }
         setScheduleData(prev => ({ ...prev, [activeDay]: updatedDay }));
     };
 
@@ -378,7 +389,7 @@ export default function CreateTimetable() {
                                     </div>
                                 </div>
 
-                                {scheduleData[activeDay].length === 0 ? (
+                                {(!scheduleData[activeDay] || scheduleData[activeDay].length === 0) ? (
                                     <div className="text-center py-5 bg-surface rounded-3 text-muted border border-dashed">
                                         <FaClock size={30} className="mb-3 opacity-25" />
                                         <p>No periods added for {activeDay}.</p>
@@ -390,7 +401,7 @@ export default function CreateTimetable() {
                                     </div>
                                 ) : (
                                     <div className="d-flex flex-column gap-3">
-                                        {scheduleData[activeDay].map((slot, index) => (
+                                        {(scheduleData[activeDay] || []).map((slot, index) => (
                                             <div key={index} className="p-3 border rounded-3 bg-surface time-slot-card">
                                                 <Row className="g-2 g-md-3 align-items-end">
                                                     {/* Start Time */}

@@ -98,7 +98,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
     const activeCfg = STATUS_CONFIG.find(s => s.key === status);
 
     return (
-        <Modal show={show} onHide={onHide} centered className="attendance-modal">
+        <Modal show={show} onHide={onHide} centered className="attendance-modal" size="sm">
             <Modal.Header closeButton className="border-0 pb-0">
                 <Modal.Title className="fw-bold">
                     {classData?.existingRecordId ? '✏️ Update Attendance' : '📝 Log Attendance'}

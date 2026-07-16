@@ -38,6 +38,8 @@ export default function Subjects() {
     // delete confirm modal
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
     const [subjectToDelete, setSubjectToDelete] = useState(null);
+    const [showDeleteAllModal, setShowDeleteAllModal] = useState(false);
+    const [deletingAll, setDeletingAll] = useState(false);
 
     async function fetchData() {
         setLoading(true);
@@ -151,6 +153,27 @@ export default function Subjects() {
             console.error(err);
             setError("Failed to delete subject");
         }
+    };
+
+    const handleDeleteAllSubjects = async () => {
+        setDeletingAll(true);
+        try {
+            const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
+            const subSnap = await getDocs(subQ);
+            const batch = writeBatch(db);
+            subSnap.docs.forEach((docSnapshot) => {
+                batch.delete(docSnapshot.ref);
+            });
+            await batch.commit();
+            setShowDeleteAllModal(false);
+            setSuccessMsg("All subjects deleted successfully.");
+            setTimeout(() => setSuccessMsg(""), 5000);
+            await fetchData();
+        } catch (err) {
+            console.error(err);
+            setError("Failed to delete all subjects");
+        }
+        setDeletingAll(false);
     };
 
     const handleResetSemester = async () => {
@@ -280,18 +303,28 @@ export default function Subjects() {
                         <h2 className="fw-bold mb-1">Subjects</h2>
                         <p className="text-muted mb-0">Subjects are automatically synced from your joined timetables</p>
                     </div>
-                    <div className="d-flex gap-2 w-100 w-md-auto">
+                    <div className="d-flex gap-2 w-100 w-md-auto flex-wrap">
                         <Button
                             variant="outline-danger"
                             onClick={() => setShowResetModal(true)}
                             className="rounded-pill d-flex align-items-center gap-2 shadow-sm flex-fill flex-md-grow-0"
+                            style={{ whiteSpace: "nowrap" }}
                         >
                             <FaSync /> Reset Semester
+                        </Button>
+                        <Button
+                            variant="outline-danger"
+                            onClick={() => setShowDeleteAllModal(true)}
+                            className="rounded-pill d-flex align-items-center gap-2 shadow-sm flex-fill flex-md-grow-0"
+                            style={{ whiteSpace: "nowrap" }}
+                        >
+                            <FaTrash /> Delete All Subjects
                         </Button>
                         <Button
                             variant="primary"
                             onClick={() => setShowModal(true)}
                             className="rounded-pill d-flex align-items-center gap-2 shadow-sm flex-fill flex-md-grow-0"
+                            style={{ whiteSpace: "nowrap" }}
                         >
                             <FaPlus /> Add Subject
                         </Button>
@@ -682,6 +715,24 @@ export default function Subjects() {
                         <Button variant="light" className="rounded-pill" onClick={() => setShowDeleteConfirm(false)}>Cancel</Button>
                         <Button variant="danger" className="rounded-pill px-4" onClick={confirmDelete}>
                             <FaTrash className="me-2" size={12} /> Delete
+                        </Button>
+                    </Modal.Footer>
+                </Modal>
+
+                {/* Delete All Subjects Confirmation Modal */}
+                <Modal show={showDeleteAllModal} onHide={() => setShowDeleteAllModal(false)} centered size="sm">
+                    <Modal.Header closeButton className="border-0 pb-0">
+                        <Modal.Title className="fw-bold">Delete All Subjects?</Modal.Title>
+                    </Modal.Header>
+                    <Modal.Body className="pt-1">
+                        <p className="mb-0">
+                            This action cannot be undone.
+                        </p>
+                    </Modal.Body>
+                    <Modal.Footer className="border-0 pt-0">
+                        <Button variant="light" className="rounded-pill" onClick={() => setShowDeleteAllModal(false)} disabled={deletingAll}>Cancel</Button>
+                        <Button variant="danger" className="rounded-pill px-4" onClick={handleDeleteAllSubjects} disabled={deletingAll}>
+                            {deletingAll ? "Deleting..." : "Delete"}
                         </Button>
                     </Modal.Footer>
                 </Modal>

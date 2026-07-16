@@ -94,7 +94,7 @@ function TimetableCard({ t, isOwn, isJoined, onJoin, joining, onEdit }) {
             <div>
                 <div style={{ fontWeight: 700, fontSize: '1rem', color: 'var(--text-primary)', marginBottom: 3 }}>{t.name}</div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
-                    {isOwn ? (t.isPrivate ? 'Only visible to you' : `Public · ${t.attendees?.length || 0} members`) : `by ${t.creatorName}`}
+                    {isOwn ? (t.isPrivate ? 'Only visible to you' : `Public · ${t.attendees?.length || 0} members`) : `by #${t.publicAnonymousId || (t.id ? t.id.slice(0, 8).toUpperCase() : 'ANON')}`}
                 </div>
             </div>
 
@@ -215,11 +215,12 @@ export default function TimetableDiscovery() {
         setJoining(null);
     };
 
-    const filtered = timetables.filter(t =>
-        t.name.toLowerCase().includes(search.toLowerCase()) ||
-        t.code.toLowerCase().includes(search.toLowerCase()) ||
-        t.creatorName.toLowerCase().includes(search.toLowerCase())
-    );
+    const filtered = timetables.filter(t => {
+        const anonId = t.publicAnonymousId || (t.id ? t.id.slice(0, 8).toUpperCase() : 'ANON');
+        return t.name.toLowerCase().includes(search.toLowerCase()) ||
+            (t.code && t.code.toLowerCase().includes(search.toLowerCase())) ||
+            anonId.toLowerCase().includes(search.toLowerCase());
+    });
 
     return (
         <>

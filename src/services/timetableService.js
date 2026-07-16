@@ -11,6 +11,15 @@ const generateCode = () => {
     return code;
 };
 
+const generateHexId = () => {
+    const chars = "0123456789ABCDEF";
+    let code = "";
+    for (let i = 0; i < 8; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+};
+
 export const createTimetable = async (user, timetableData) => {
     let unique = false;
     let code = "";
@@ -27,6 +36,8 @@ export const createTimetable = async (user, timetableData) => {
         code,
         creatorUid: user.uid,
         creatorName: user.displayName || user.email.split('@')[0],
+        creatorEmail: user.email || "",
+        publicAnonymousId: generateHexId(),
         createdAt: Timestamp.now(),
         attendees: [user.uid] 
     };
@@ -150,7 +161,6 @@ export const getUserTimetables = async (uid) => {
     }
     return timetables;
 };
-
 export const createPrivateTimetable = async (user, timetableData) => {
     const newTimetable = {
         ...timetableData,
@@ -158,6 +168,8 @@ export const createPrivateTimetable = async (user, timetableData) => {
         isPrivate: true,
         creatorUid: user.uid,
         creatorName: user.displayName || user.email.split('@')[0],
+        creatorEmail: user.email || "",
+        publicAnonymousId: generateHexId(),
         createdAt: Timestamp.now(),
         attendees: [user.uid] 
     };

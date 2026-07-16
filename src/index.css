@@ -1309,7 +1309,6 @@ p {
   }
 }
 
-/* ── Toast system styling ── */
 .toast-stack {
   position: fixed;
   bottom: 24px;
@@ -1320,6 +1319,12 @@ p {
   z-index: 9999;
   max-width: 350px;
   width: calc(100% - 48px);
+}
+
+@media (max-width: 700px) {
+  .toast-stack {
+    bottom: 85px;
+  }
 }
 
 .app-toast {

@@ -4,9 +4,9 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     FaBell, FaBook, FaCalendarDay, FaCheck, FaClock, FaEllipsisH,
     FaGraduationCap, FaHistory, FaMoon, FaSignOutAlt, FaSun, FaTimes,
-    FaUser, FaUserShield, FaDownload
+    FaUser, FaUserShield, FaDownload, FaCommentDots
 } from 'react-icons/fa';
-import { collection, query, where, getDocs, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, Timestamp, onSnapshot } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -25,6 +25,8 @@ export default function Navigation() {
     const [profile, setProfile] = useState(null);
     const [deferredPrompt, setDeferredPrompt] = useState(null);
     const [showPwaModal, setShowPwaModal] = useState(false);
+    const [unreadFeedbackCount, setUnreadFeedbackCount] = useState(0);
+    const [unreadNotificationsCount, setUnreadNotificationsCount] = useState(0);
 
     useEffect(() => {
         const handler = (e) => {
@@ -57,6 +59,7 @@ export default function Navigation() {
         { to: '/timetables', icon: FaClock, label: 'Timetable' },
         { to: '/history', icon: FaHistory, label: 'History' },
         { to: '/profile', icon: FaUser, label: 'Profile' },
+        { to: '/contact', icon: FaCommentDots, label: 'Contact & Feedback' },
         ...(isAdmin ? [{ to: '/admin/responses', icon: FaUserShield, label: 'Admin', adminOnly: true }] : []),
     ];
 
@@ -120,13 +123,67 @@ export default function Navigation() {
         }
     }, [currentUser]);
 
+    useEffect(() => {
+        if (currentUser && isAdmin) {
+            const fetchUnreadFeedback = async () => {
+                try {
+                    const q = query(
+                        collection(db, "feedback_reports"),
+                        where("status", "==", "New")
+                    );
+                    const snap = await getDocs(q);
+                    setUnreadFeedbackCount(snap.size);
+                } catch (err) {
+                    console.error("Failed to fetch unread feedback count:", err);
+                }
+            };
+            fetchUnreadFeedback();
+            const interval = setInterval(fetchUnreadFeedback, 60000);
+            return () => clearInterval(interval);
+        }
+    }, [currentUser, isAdmin]);
+
+    useEffect(() => {
+        if (!currentUser) return;
+        const q = query(
+            collection(db, "notifications"),
+            where("uid", "==", currentUser.uid),
+            where("read", "==", false)
+        );
+        const unsubscribe = onSnapshot(q, (snap) => {
+            setUnreadNotificationsCount(snap.size);
+        });
+        return unsubscribe;
+    }, [currentUser]);
+
     const handleQuickMark = async (cls, status) => {
+        if (loadingNotifs) return;
         setLoadingNotifs(true);
         try {
+            const todayStr = format(new Date(), 'yyyy-MM-dd');
+            // Duplicate check
+            const attQ = query(collection(db, 'attendance_records'), where('uid', '==', currentUser.uid));
+            const attSnap = await getDocs(attQ);
+            const exists = attSnap.docs.some(d => {
+                const r = d.data();
+                return r.date === todayStr &&
+                       r.subject.trim().toLowerCase() === cls.subject.trim().toLowerCase() &&
+                       r.startTime.trim() === cls.startTime.trim();
+            });
+
+            if (exists) {
+                setPendingClasses(prev => prev.filter(c => 
+                    c.subject.trim().toLowerCase() !== cls.subject.trim().toLowerCase() ||
+                    c.startTime.trim() !== cls.startTime.trim()
+                ));
+                setLoadingNotifs(false);
+                return;
+            }
+
             await addDoc(collection(db, 'attendance_records'), {
                 uid: currentUser.uid,
                 email: currentUser.email,
-                date: format(new Date(), 'yyyy-MM-dd'),
+                date: todayStr,
                 subject: cls.subject,
                 status,
                 startTime: cls.startTime,
@@ -136,10 +193,15 @@ export default function Navigation() {
                 timestamp: Timestamp.now(),
                 isExtra: false
             });
-            setPendingClasses(prev => prev.filter(c => c !== cls));
+            setPendingClasses(prev => prev.filter(c => 
+                c.subject.trim().toLowerCase() !== cls.subject.trim().toLowerCase() ||
+                c.startTime.trim() !== cls.startTime.trim()
+            ));
+            if (window.__dashboardRefresh) {
+                window.__dashboardRefresh();
+            }
         } catch (err) {
             console.error('Failed to save attendance from notification:', err);
-            // Errors here are silent — user can re-log from Dashboard
         }
         setLoadingNotifs(false);
     };
@@ -155,6 +217,7 @@ export default function Navigation() {
 
     const renderNavLink = ({ to, icon: Icon, label, adminOnly }, compact = false) => {
         const active = location.pathname === to;
+        const isFeedbackUnread = adminOnly && unreadFeedbackCount > 0;
         return (
             <Link
                 key={to}
@@ -163,7 +226,14 @@ export default function Navigation() {
                 title={label}
             >
                 <Icon className="app-nav-icon" size={compact ? 16 : 18} />
-                <span className="app-nav-label">{label}</span>
+                <span className="app-nav-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: compact ? 'auto' : '100%' }}>
+                    {label}
+                    {isFeedbackUnread && (
+                        <Badge bg="danger" pill style={{ fontSize: '0.65rem', padding: '0.35em 0.5em', marginLeft: '6px' }}>
+                            {unreadFeedbackCount}
+                        </Badge>
+                    )}
+                </span>
             </Link>
         );
     };
@@ -172,7 +242,7 @@ export default function Navigation() {
         <Dropdown align={align}>
             <Dropdown.Toggle as="button" className="nav-icon-button position-relative" title="Notifications">
                 <FaBell size={16} />
-                {pendingClasses.length > 0 && <span className="nav-alert-dot" />}
+                {(pendingClasses.length > 0 || unreadNotificationsCount > 0) && <span className="nav-alert-dot" />}
             </Dropdown.Toggle>
             <Dropdown.Menu className="shadow-lg p-0 nav-popover">
                 <div className="px-4 py-3 d-flex justify-content-between align-items-center nav-popover-header">
@@ -181,6 +251,11 @@ export default function Navigation() {
                         {pendingClasses.length > 0 && (
                             <div className="small text-muted text-truncate">
                                 {pendingClasses.length} unmarked {pendingClasses.length === 1 ? 'class' : 'classes'}
+                            </div>
+                        )}
+                        {unreadNotificationsCount > 0 && (
+                            <div className="small text-danger text-truncate">
+                                {unreadNotificationsCount} unread {unreadNotificationsCount === 1 ? 'notification' : 'notifications'}
                             </div>
                         )}
                     </div>
@@ -216,6 +291,11 @@ export default function Navigation() {
                             </div>
                         ))
                     )}
+                </div>
+                <div className="border-top text-center py-2 bg-light">
+                    <Link to="/notification-center" className="small text-decoration-none fw-bold text-primary">
+                        View Notification Center
+                    </Link>
                 </div>
             </Dropdown.Menu>
         </Dropdown>

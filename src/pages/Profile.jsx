@@ -16,8 +16,9 @@ import {
 import {
     FaBell, FaBook, FaChartPie, FaCheckCircle, FaDice,
     FaEdit, FaExclamationCircle, FaGraduationCap, FaPlus,
-    FaSave, FaTimes, FaTrash, FaUser
+    FaSave, FaTimes, FaTrash, FaUser, FaCog
 } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 import Navigation from "../components/Navigation";
 import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
@@ -47,6 +48,7 @@ const EMPTY_FORM = {
 export default function Profile() {
     const { currentUser } = useAuth();
     const toast = useToast();
+    const navigate = useNavigate();
 
     /* ── core state ─────────────────────────────────────── */
     const [loading, setLoading]           = useState(true);
@@ -431,7 +433,7 @@ export default function Profile() {
                                             <span className="text-muted">total</span>
                                         </span>
                                     </div>
-                                    <div className="d-grid mt-3">
+                                    <div className="d-grid mt-3 gap-2">
                                         <Button
                                             variant="primary"
                                             size="sm"
@@ -439,6 +441,14 @@ export default function Profile() {
                                             onClick={handleDownloadCSV}
                                         >
                                             <FaSave size={12} /> Download Report (CSV)
+                                        </Button>
+                                        <Button
+                                            variant="outline-secondary"
+                                            size="sm"
+                                            className="rounded-pill d-flex align-items-center justify-content-center gap-2"
+                                            onClick={() => navigate("/notification-settings")}
+                                        >
+                                            <FaCog size={12} /> Notification Settings
                                         </Button>
                                     </div>
                                 </Card.Body>
