@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaCalendarDay, FaBook, FaClock, FaHistory, FaUserShield, FaUser } from 'react-icons/fa';
+import { FaCalendarDay, FaBook, FaClock, FaStickyNote, FaUserShield, FaUser } from 'react-icons/fa';
 import { useAuth } from '../contexts/AuthContext';
 
 export default function MobileNav() {
@@ -16,7 +16,7 @@ export default function MobileNav() {
         { to: '/',          icon: <FaCalendarDay size={20} />, label: 'Dashboard' },
         { to: '/subjects',  icon: <FaBook size={20} />,        label: 'Subjects'  },
         { to: '/timetables',icon: <FaClock size={20} />,       label: 'Timetable' },
-        { to: '/history',   icon: <FaHistory size={20} />,     label: 'History'   },
+        { to: '/history',   icon: <FaStickyNote size={20} />,     label: 'Notes'   },
         { to: '/profile',   icon: <FaUser size={20} />,        label: 'Profile'   },
         ...(isAdmin ? [{ to: '/admin/responses', icon: <FaUserShield size={20} />, label: 'Admin', adminOnly: true }] : []),
     ];

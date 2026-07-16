@@ -3,7 +3,7 @@ import { Badge, Button, Dropdown, Spinner, Modal } from 'react-bootstrap';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
     FaBell, FaBook, FaCalendarDay, FaCheck, FaClock, FaEllipsisH,
-    FaGraduationCap, FaHistory, FaMoon, FaSignOutAlt, FaSun, FaTimes,
+    FaGraduationCap, FaStickyNote, FaMoon, FaSignOutAlt, FaSun, FaTimes,
     FaUser, FaUserShield, FaDownload, FaCommentDots
 } from 'react-icons/fa';
 import { collection, query, where, getDocs, addDoc, Timestamp, onSnapshot } from 'firebase/firestore';
@@ -57,7 +57,7 @@ export default function Navigation() {
         { to: '/', icon: FaCalendarDay, label: 'Dashboard' },
         { to: '/subjects', icon: FaBook, label: 'Subjects' },
         { to: '/timetables', icon: FaClock, label: 'Timetable' },
-        { to: '/history', icon: FaHistory, label: 'History' },
+        { to: '/history', icon: FaStickyNote, label: 'Notes' },
         { to: '/profile', icon: FaUser, label: 'Profile' },
         { to: '/contact', icon: FaCommentDots, label: 'Contact & Feedback' },
         ...(isAdmin ? [{ to: '/admin/responses', icon: FaUserShield, label: 'Admin', adminOnly: true }] : []),
