@@ -57,26 +57,41 @@ self.addEventListener("fetch", (e) => {
 // IndexedDB helpers for background config storage
 function getDB() {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open("ClassPulseOffline", 1);
-    request.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains("config")) {
-        db.createObjectStore("config");
+    try {
+      if (typeof indexedDB === "undefined") {
+        reject(new Error("IndexedDB is not supported in Service Worker"));
+        return;
       }
-    };
-    request.onsuccess = (e) => resolve(e.target.result);
-    request.onerror = (e) => reject(e.target.error);
+      const request = indexedDB.open("ClassPulseOffline", 1);
+      request.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains("config")) {
+          db.createObjectStore("config");
+        }
+      };
+      request.onsuccess = (e) => resolve(e.target.result);
+      request.onerror = (e) => reject(e.target.error);
+    } catch (err) {
+      reject(err);
+    }
   });
 }
 
 function getVal(key) {
-  return getDB().then(db => new Promise((resolve) => {
-    const tx = db.transaction("config", "readonly");
-    const store = tx.objectStore("config");
-    const req = store.get(key);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => resolve(null);
-  })).catch(() => null);
+  return getDB().then(db => {
+    if (!db) return null;
+    return new Promise((resolve, reject) => {
+      try {
+        const tx = db.transaction("config", "readonly");
+        const store = tx.objectStore("config");
+        const req = store.get(key);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = (e) => reject(e.target.error);
+      } catch (err) {
+        reject(err);
+      }
+    });
+  }).catch(() => null);
 }
 
 async function saveAttendanceFromNotification(action, classData) {

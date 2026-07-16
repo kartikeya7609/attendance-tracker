@@ -26,25 +26,43 @@ const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
 // IndexedDB helper for Service Worker communication
 function getDB() {
     return new Promise((resolve, reject) => {
-        const request = indexedDB.open("ClassPulseOffline", 1);
-        request.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains("config")) {
-                db.createObjectStore("config");
+        try {
+            if (typeof indexedDB === "undefined" || !window.indexedDB) {
+                reject(new Error("IndexedDB is not supported in this environment"));
+                return;
             }
-        };
-        request.onsuccess = (e) => resolve(e.target.result);
-        request.onerror = (e) => reject(e.target.error);
+            const request = indexedDB.open("ClassPulseOffline", 1);
+            request.onupgradeneeded = (e) => {
+                const db = e.target.result;
+                if (!db.objectStoreNames.contains("config")) {
+                    db.createObjectStore("config");
+                }
+            };
+            request.onsuccess = (e) => resolve(e.target.result);
+            request.onerror = (e) => reject(e.target.error);
+        } catch (err) {
+            reject(err);
+        }
     });
 }
 
 function setVal(key, val) {
-    return getDB().then(db => new Promise((resolve) => {
-        const tx = db.transaction("config", "readwrite");
-        const store = tx.objectStore("config");
-        store.put(val, key);
-        tx.oncomplete = () => resolve();
-    }));
+    return getDB().then(db => {
+        if (!db) return;
+        return new Promise((resolve, reject) => {
+            try {
+                const tx = db.transaction("config", "readwrite");
+                const store = tx.objectStore("config");
+                store.put(val, key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = (e) => reject(e.target.error);
+            } catch (err) {
+                reject(err);
+            }
+        });
+    }).catch(err => {
+        console.warn("IndexedDB setVal failed:", err.message);
+    });
 }
 
 function AppLayout() {
