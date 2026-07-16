@@ -123,6 +123,45 @@ export default function CreateTimetable() {
         }
     };
 
+    const EXAMPLE_TEMPLATE_SCHEDULE = {
+        Monday: [
+            { startTime: "09:00", endTime: "10:00", subject: "EEC 431: ARD / MEC431: AKD, SM" },
+            { startTime: "10:00", endTime: "11:00", subject: "EEC401: AB" },
+            { startTime: "11:00", endTime: "12:00", subject: "EEC402: SNM" },
+            { startTime: "14:00", endTime: "15:00", subject: "MES481:" },
+            { startTime: "15:00", endTime: "16:00", subject: "MES481:" }
+        ],
+        Tuesday: [
+            { startTime: "09:00", endTime: "10:00", subject: "EEC403: ARD" },
+            { startTime: "10:00", endTime: "11:00", subject: "EEC404: CK" },
+            { startTime: "11:00", endTime: "12:00", subject: "EEC 431: ARD/ MEC431: AKD, SM" },
+            { startTime: "12:00", endTime: "13:00", subject: "EEC403: TKB" },
+            { startTime: "14:00", endTime: "15:00", subject: "EES451(B): JD, JCB, CK, ARD, OY" },
+            { startTime: "15:00", endTime: "16:00", subject: "EES451(B): JD, JCB, CK, ARD, OY" }
+        ],
+        Wednesday: [
+            { startTime: "09:00", endTime: "10:00", subject: "EEC402: JCB" },
+            { startTime: "10:00", endTime: "11:00", subject: "EEC404: CK" },
+            { startTime: "11:00", endTime: "12:00", subject: "EEC403: TKB" },
+            { startTime: "12:00", endTime: "13:00", subject: "EEC401: SST" },
+            { startTime: "14:00", endTime: "15:00", subject: "EES451(A): JCB, SH, AKD, MS, SC, SP" },
+            { startTime: "15:00", endTime: "16:00", subject: "EES451(A): JCB, SH, AKD, MS, SC, SP" }
+        ],
+        Thursday: [
+            { startTime: "09:00", endTime: "10:00", subject: "EEC403: ARD" },
+            { startTime: "10:00", endTime: "11:00", subject: "EEC404: CK" },
+            { startTime: "11:00", endTime: "12:00", subject: "EEC402: SNM" },
+            { startTime: "12:00", endTime: "13:00", subject: "EEC401: SST" }
+        ],
+        Friday: [
+            { startTime: "09:00", endTime: "10:00", subject: "EEC 431: ARD / MEC431: AKD, SM" },
+            { startTime: "10:00", endTime: "11:00", subject: "EEC404: CK" },
+            { startTime: "11:00", endTime: "12:00", subject: "EEC402: JCB" },
+            { startTime: "12:00", endTime: "13:00", subject: "EEC401: SST" }
+        ],
+        Saturday: []
+    };
+
     const handleAddTimeSlot = () => {
         setScheduleData(prev => ({
             ...prev,
@@ -134,10 +173,18 @@ export default function CreateTimetable() {
     };
 
     const handlePopulateDefaults = () => {
+        const dayTemplate = EXAMPLE_TEMPLATE_SCHEDULE[activeDay] || [];
         setScheduleData(prev => ({
             ...prev,
-            [activeDay]: defaultPeriods.map(p => ({ ...p, subject: "" }))
+            [activeDay]: dayTemplate.length > 0 ? dayTemplate : defaultPeriods.map(p => ({ ...p, subject: "" }))
         }));
+    };
+
+    const handleLoadFullTemplate = () => {
+        if (window.confirm("Overwrite current schedule with the example template schedule from the timetable image?")) {
+            setTimetableName("ECE Sem 4 Class Timetable");
+            setScheduleData(EXAMPLE_TEMPLATE_SCHEDULE);
+        }
     };
 
     const handleRemoveTimeSlot = (index) => {
@@ -349,6 +396,15 @@ export default function CreateTimetable() {
                                         This will be visible to everyone.
                                     </Form.Text>
                                 </Form.Group>
+
+                                <Button 
+                                    variant="outline-primary" 
+                                    className="w-100 mb-3 rounded-pill fw-bold"
+                                    onClick={handleLoadFullTemplate}
+                                    style={{ fontSize: '0.85rem' }}
+                                >
+                                    ✨ Load Template Schedule
+                                </Button>
 
                                 <div className="alert alert-info small border-0 bg-info-subtle">
                                     <h6 className="fw-bold mb-1">Open System</h6>

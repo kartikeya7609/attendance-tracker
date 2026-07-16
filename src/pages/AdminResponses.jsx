@@ -4,7 +4,123 @@ import Navigation from "../components/Navigation";
 import { db } from "../services/firebase";
 import { collection, query, orderBy, getDocs, limit, where, doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { getUserTimetables } from "../services/timetableService";
-import { FaFileDownload, FaSearch, FaUserShield, FaEye, FaBook, FaClock, FaTrash, FaExclamationTriangle, FaUsers, FaCalendarAlt } from "react-icons/fa";
+import { FaFileDownload, FaSearch, FaUserShield, FaEye, FaBook, FaClock, FaTrash, FaExclamationTriangle, FaUsers, FaCalendarAlt, FaDownload } from "react-icons/fa";
+
+const WeeklyScheduleGrid = ({ schedule }) => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    // Extract unique time slots
+    const slots = [];
+    Object.values(schedule || {}).forEach(daySlots => {
+        daySlots.forEach(slot => {
+            if (slot.startTime && slot.endTime) {
+                slots.push({ start: slot.startTime, end: slot.endTime });
+            }
+        });
+    });
+    
+    const uniqueSlots = [];
+    const seen = new Set();
+    slots.forEach(s => {
+        const key = `${s.start}-${s.end}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueSlots.push(s);
+        }
+    });
+    
+    uniqueSlots.sort((a, b) => a.start.localeCompare(b.start));
+
+    const formatTimeLabel = (start, end) => {
+        const toAmPm = (timeStr) => {
+            if (!timeStr) return "";
+            const [hStr, mStr] = timeStr.split(':');
+            const h = parseInt(hStr, 10);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 === 0 ? 12 : h % 12;
+            const displayM = parseInt(mStr, 10) === 0 ? '' : `:${mStr}`;
+            return `${displayH}${displayM} ${ampm}`;
+        };
+        const sFormatted = toAmPm(start) === "12 PM" ? "12 Noon" : toAmPm(start);
+        const eFormatted = toAmPm(end) === "12 PM" ? "12 Noon" : toAmPm(end);
+        
+        const sParts = sFormatted.split(' ');
+        const eParts = eFormatted.split(' ');
+        if (sParts.length === 2 && eParts.length === 2 && sParts[1] === eParts[1]) {
+            return `${sParts[0]} to ${eFormatted}`;
+        }
+        return `${sFormatted} to ${eFormatted}`;
+    };
+
+    if (uniqueSlots.length === 0) {
+        return <div className="text-center text-muted py-3 small">No schedule slots defined.</div>;
+    }
+
+    return (
+        <div className="table-responsive rounded-3 border">
+            <Table bordered hover className="mb-0 text-center align-middle" style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                <thead style={{ background: 'var(--bg-body)' }}>
+                    <tr>
+                        <th style={{ minWidth: '90px', background: 'var(--bg-surface)' }}>Day</th>
+                        {uniqueSlots.map((slot, idx) => (
+                            <th key={idx} style={{ minWidth: '120px', background: 'var(--bg-surface)' }}>
+                                <div className="fw-bold">{formatTimeLabel(slot.start, slot.end)}</div>
+                                <small className="text-muted" style={{ fontSize: '0.7rem' }}>{slot.start} - {slot.end}</small>
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {days.map(day => {
+                        const daySlots = schedule?.[day] || [];
+                        return (
+                            <tr key={day}>
+                                <td className="fw-bold" style={{ background: 'var(--bg-surface)' }}>{day}</td>
+                                {uniqueSlots.map((slot, idx) => {
+                                    const match = daySlots.find(s => s.startTime === slot.start && s.endTime === slot.end);
+                                    
+                                    let bg = 'transparent';
+                                    let color = 'var(--text-secondary)';
+                                    if (match && match.subject) {
+                                        const sub = match.subject;
+                                        if (sub === 'Break / Lunch' || sub === 'Break' || sub.toLowerCase().includes('lunch')) {
+                                            bg = 'rgba(100, 116, 139, 0.08)';
+                                            color = 'var(--text-tertiary)';
+                                        } else if (sub === 'Free Period' || sub === 'Free') {
+                                            bg = 'rgba(148, 163, 184, 0.05)';
+                                            color = 'var(--text-tertiary)';
+                                        } else {
+                                            const colors = [
+                                                { bg: 'rgba(79, 70, 229, 0.08)', border: 'rgba(79, 70, 229, 0.25)', color: 'var(--primary-color)' },
+                                                { bg: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.25)', color: 'var(--success-color)' },
+                                                { bg: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.25)', color: 'var(--warning-color)' },
+                                                { bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.25)', color: 'var(--danger-color)' },
+                                                { bg: 'rgba(6, 182, 212, 0.08)', border: 'rgba(6, 182, 212, 0.25)', color: 'var(--info-color, #06b6d4)' }
+                                            ];
+                                            const code = sub.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                                            const c = colors[code % colors.length];
+                                            return (
+                                                <td key={idx} style={{ background: c.bg, color: c.color, border: `1.5px solid ${c.border}`, fontWeight: 600, padding: '12px 8px' }}>
+                                                    <div style={{ fontSize: '0.85rem' }}>{sub}</div>
+                                                </td>
+                                            );
+                                        }
+                                    }
+
+                                    return (
+                                        <td key={idx} style={{ background: bg, color, verticalAlign: 'middle', padding: '12px 8px' }}>
+                                            {match ? (match.subject || '—') : '—'}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </Table>
+        </div>
+    );
+};
 
 export default function AdminResponses() {
     const [students, setStudents] = useState([]);
@@ -30,6 +146,66 @@ export default function AdminResponses() {
     const [deleting, setDeleting] = useState(false);
     const [showTimetableDetail, setShowTimetableDetail] = useState(false);
     const [selectedTimetableDetail, setSelectedTimetableDetail] = useState(null);
+    const [downloadingImage, setDownloadingImage] = useState(false);
+
+    const handleDownloadImage = async () => {
+        const element = document.getElementById('admin-weekly-grid-capture');
+        if (!element) return;
+        setDownloadingImage(true);
+        try {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const html2canvas = (await import('html2canvas')).default;
+            
+            // Clone element to render it off-screen in its full natural dimensions
+            const clone = element.cloneNode(true);
+            clone.style.position = 'absolute';
+            clone.style.top = '-9999px';
+            clone.style.left = '-9999px';
+            clone.style.width = '1200px'; // Set standard desktop width for clean render
+            clone.style.maxWidth = 'none';
+            clone.style.height = 'auto';
+            clone.style.overflow = 'visible';
+            
+            // Un-scroll wrappers inside the clone
+            const responsiveWrappers = clone.querySelectorAll('.table-responsive');
+            responsiveWrappers.forEach(w => {
+                w.style.overflow = 'visible';
+                w.style.width = 'auto';
+                w.style.maxWidth = 'none';
+            });
+
+            const tables = clone.querySelectorAll('table');
+            tables.forEach(t => {
+                t.style.width = '100%';
+                t.style.maxWidth = 'none';
+            });
+
+            document.body.appendChild(clone);
+            
+            // Wait for DOM to adjust
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
+            const canvas = await html2canvas(clone, {
+                backgroundColor: isDark ? '#111827' : '#ffffff',
+                scale: 2.2, // High resolution
+                useCORS: true,
+                logging: false,
+                width: 1200, // Explicit layout width
+                height: clone.scrollHeight
+            });
+            
+            document.body.removeChild(clone);
+
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `${selectedTimetableDetail?.name || 'timetable'}_weekly_grid.png`;
+            link.href = imgData;
+            link.click();
+        } catch (err) {
+            console.error('Failed to download image', err);
+        }
+        setDownloadingImage(false);
+    };
     const [filterAttendance, setFilterAttendance] = useState("all");
     const [sortStudentBy, setSortStudentBy] = useState("email");
     const [filterVisibility, setFilterVisibility] = useState("all");
@@ -452,7 +628,7 @@ export default function AdminResponses() {
                                 <Nav.Link eventKey="responses" className="rounded-pill px-4 py-2">Users</Nav.Link>
                             </Nav.Item>
                             <Nav.Item>
-                                <Nav.Link eventKey="timetables" className="rounded-pill px-4 py-2">Public Timetables</Nav.Link>
+                                <Nav.Link eventKey="timetables" className="rounded-pill px-4 py-2">All Timetables</Nav.Link>
                             </Nav.Item>
                             <Nav.Item>
                                 <Nav.Link eventKey="feedback" className="rounded-pill px-4 py-2 d-flex align-items-center gap-2">
@@ -909,11 +1085,10 @@ export default function AdminResponses() {
                     </Modal.Body>
                 </Modal>
 
-                {/* Timetable Details Modal */}
                 <Modal show={showTimetableDetail} onHide={() => setShowTimetableDetail(false)} size="lg" centered scrollable>
-                    <Modal.Header closeButton>
-                        <Modal.Title>
-                            Timetable: <span className="text-primary">{selectedTimetableDetail?.name}</span>
+                    <Modal.Header closeButton style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Modal.Title className="fw-bold" style={{ fontSize: '1.15rem', wordBreak: 'break-word', paddingRight: '2rem', flex: '1 1 auto' }}>
+                            Timetable: <span className="text-primary" style={{ display: 'inline-block', wordBreak: 'break-word' }}>{selectedTimetableDetail?.name}</span>
                         </Modal.Title>
                     </Modal.Header>
                     <Modal.Body style={{ background: 'var(--bg-body)', color: 'var(--text-primary)' }}>
@@ -941,6 +1116,17 @@ export default function AdminResponses() {
                                 </Card>
 
                                 <div>
+                                    <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaCalendarAlt /> Weekly Class Schedule Grid</h6>
+                                    <div id="admin-weekly-grid-capture" className="p-3 rounded-4 mb-4" style={{ background: 'var(--bg-card)' }}>
+                                        <div className="mb-3 d-flex justify-content-between align-items-center border-bottom pb-2">
+                                            <h5 className="fw-bold mb-0 text-primary" style={{ wordBreak: 'break-word' }}>📅 {selectedTimetableDetail.name}</h5>
+                                            <span className="text-muted small fw-bold">ClassPulse Weekly Schedule</span>
+                                        </div>
+                                        <WeeklyScheduleGrid schedule={selectedTimetableDetail.schedule} />
+                                    </div>
+                                </div>
+
+                                <div>
                                     <h6 className="fw-bold mb-3 d-flex align-items-center gap-2"><FaUsers /> Joined Members ({students.filter(s => selectedTimetableDetail.attendees?.includes(s.uid)).length})</h6>
                                     <Card className="border-0 shadow-sm" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
                                         <Table hover className="mb-0 align-middle" style={{ color: 'var(--text-primary)' }}>
@@ -954,22 +1140,24 @@ export default function AdminResponses() {
                                             </thead>
                                             <tbody>
                                                 {students.filter(s => selectedTimetableDetail.attendees?.includes(s.uid)).map(s => {
-                                                    const isActive = s.lastActive !== "Never" && (new Date() - new Date(s.lastActive)) / (1000 * 60 * 60 * 24) <= 7;
+                                                    const records = s.records || [];
+                                                    const valid = records.filter(r => r.timetableId === selectedTimetableDetail.id);
+                                                    const present = valid.filter(r => r.status === "Present" || r.status === "Medical Leave").length;
+                                                    const total = valid.length;
+                                                    const percent = total > 0 ? Math.round((present / total) * 100) : 0;
+                                                    const isActive = s.lastActive && (new Date() - new Date(s.lastActive) < 5 * 60 * 1000);
                                                     return (
                                                         <tr key={s.uid}>
-                                                            <td className="ps-3">
-                                                                <div className="fw-bold text-primary">{s.email}</div>
-                                                                <small className="text-muted">UID: {s.uid}</small>
+                                                            <td className="ps-3 fw-bold">
+                                                                {s.email}
+                                                                <div className="text-muted small" style={{ fontSize: '0.7rem' }}>UID: {s.uid}</div>
                                                             </td>
                                                             <td>
                                                                 <div className="d-flex align-items-center gap-2">
-                                                                    {s.totalClasses > 0 ? (
-                                                                        <>
-                                                                            <span className="small text-muted">{s.presentClasses}/{s.totalClasses}</span>
-                                                                            <Badge bg={s.attendancePercent >= 75 ? 'success' : s.attendancePercent >= 50 ? 'warning' : 'danger'}>
-                                                                                {s.attendancePercent}%
-                                                                            </Badge>
-                                                                        </>
+                                                                    <ProgressBar now={percent} style={{ width: 60, height: 6 }} variant={percent >= 75 ? "success" : percent >= 60 ? "warning" : "danger"} />
+                                                                    <span className="fw-bold">{percent}%</span>
+                                                                    {total > 0 ? (
+                                                                        <Badge bg="light" className="text-dark border small ms-1">{present}/{total}</Badge>
                                                                     ) : (
                                                                         <Badge bg="secondary">No Activity</Badge>
                                                                     )}
@@ -998,6 +1186,12 @@ export default function AdminResponses() {
                             </div>
                         )}
                     </Modal.Body>
+                    <Modal.Footer className="border-top-0 pt-0">
+                        <Button variant="primary" className="rounded-pill px-4 me-2 fw-bold" onClick={handleDownloadImage} disabled={downloadingImage}>
+                            {downloadingImage ? <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} /> : <FaDownload className="me-2" />} Download Image
+                        </Button>
+                        <Button variant="secondary" className="rounded-pill px-4" onClick={() => setShowTimetableDetail(false)}>Close</Button>
+                    </Modal.Footer>
                 </Modal>
 
                 { }

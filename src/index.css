@@ -1582,11 +1582,10 @@ p {
   
   /* Form components on mobile */
   .form-control, .form-select {
-    padding: 0.65rem 0.85rem !important;
+    padding: 0.65rem 0.85rem;
     font-size: 0.9rem !important;
   }
-  
-  /* Dashboard Settings Panel */
+    /* Dashboard Settings Panel */
   .sem-settings-panel {
     padding: 16px 12px !important;
   }

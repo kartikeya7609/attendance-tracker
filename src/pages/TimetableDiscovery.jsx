@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Container, Row, Col, Spinner, Alert } from 'react-bootstrap';
+import { Container, Row, Col, Spinner, Alert, Table, Modal, Button } from 'react-bootstrap';
 import Navigation from '../components/Navigation';
 import { getAllTimetables, joinTimetable, getUserCreatedTimetables } from '../services/timetableService';
 import { useAuth } from '../contexts/AuthContext';
-import { FaSearch, FaPlus, FaUsers, FaCalendarAlt, FaHashtag, FaEdit, FaLock, FaCompass, FaCheck } from 'react-icons/fa';
+import { FaSearch, FaPlus, FaUsers, FaCalendarAlt, FaHashtag, FaEdit, FaLock, FaCompass, FaCheck, FaDownload } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 
 function SubjectChip({ label, index }) {
@@ -29,7 +29,123 @@ function SubjectChip({ label, index }) {
     );
 }
 
-function TimetableCard({ t, isOwn, isJoined, onJoin, joining, onEdit }) {
+const WeeklyScheduleGrid = ({ schedule }) => {
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
+    
+    // Extract unique time slots
+    const slots = [];
+    Object.values(schedule || {}).forEach(daySlots => {
+        daySlots.forEach(slot => {
+            if (slot.startTime && slot.endTime) {
+                slots.push({ start: slot.startTime, end: slot.endTime });
+            }
+        });
+    });
+    
+    const uniqueSlots = [];
+    const seen = new Set();
+    slots.forEach(s => {
+        const key = `${s.start}-${s.end}`;
+        if (!seen.has(key)) {
+            seen.add(key);
+            uniqueSlots.push(s);
+        }
+    });
+    
+    uniqueSlots.sort((a, b) => a.start.localeCompare(b.start));
+
+    const formatTimeLabel = (start, end) => {
+        const toAmPm = (timeStr) => {
+            if (!timeStr) return "";
+            const [hStr, mStr] = timeStr.split(':');
+            const h = parseInt(hStr, 10);
+            const ampm = h >= 12 ? 'PM' : 'AM';
+            const displayH = h % 12 === 0 ? 12 : h % 12;
+            const displayM = parseInt(mStr, 10) === 0 ? '' : `:${mStr}`;
+            return `${displayH}${displayM} ${ampm}`;
+        };
+        const sFormatted = toAmPm(start) === "12 PM" ? "12 Noon" : toAmPm(start);
+        const eFormatted = toAmPm(end) === "12 PM" ? "12 Noon" : toAmPm(end);
+        
+        const sParts = sFormatted.split(' ');
+        const eParts = eFormatted.split(' ');
+        if (sParts.length === 2 && eParts.length === 2 && sParts[1] === eParts[1]) {
+            return `${sParts[0]} to ${eFormatted}`;
+        }
+        return `${sFormatted} to ${eFormatted}`;
+    };
+
+    if (uniqueSlots.length === 0) {
+        return <div className="text-center text-muted py-3 small">No schedule slots defined.</div>;
+    }
+
+    return (
+        <div className="table-responsive rounded-3 border">
+            <Table bordered hover className="mb-0 text-center align-middle" style={{ color: 'var(--text-primary)', fontSize: '0.85rem' }}>
+                <thead style={{ background: 'var(--bg-body)' }}>
+                    <tr>
+                        <th style={{ minWidth: '90px', background: 'var(--bg-surface)' }}>Day</th>
+                        {uniqueSlots.map((slot, idx) => (
+                            <th key={idx} style={{ minWidth: '120px', background: 'var(--bg-surface)' }}>
+                                <div className="fw-bold">{formatTimeLabel(slot.start, slot.end)}</div>
+                                <small className="text-muted" style={{ fontSize: '0.7rem' }}>{slot.start} - {slot.end}</small>
+                            </th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {days.map(day => {
+                        const daySlots = schedule?.[day] || [];
+                        return (
+                            <tr key={day}>
+                                <td className="fw-bold" style={{ background: 'var(--bg-surface)' }}>{day}</td>
+                                {uniqueSlots.map((slot, idx) => {
+                                    const match = daySlots.find(s => s.startTime === slot.start && s.endTime === slot.end);
+                                    
+                                    let bg = 'transparent';
+                                    let color = 'var(--text-secondary)';
+                                    if (match && match.subject) {
+                                        const sub = match.subject;
+                                        if (sub === 'Break / Lunch' || sub === 'Break' || sub.toLowerCase().includes('lunch')) {
+                                            bg = 'rgba(100, 116, 139, 0.08)';
+                                            color = 'var(--text-tertiary)';
+                                        } else if (sub === 'Free Period' || sub === 'Free') {
+                                            bg = 'rgba(148, 163, 184, 0.05)';
+                                            color = 'var(--text-tertiary)';
+                                        } else {
+                                            const colors = [
+                                                { bg: 'rgba(79, 70, 229, 0.08)', border: 'rgba(79, 70, 229, 0.25)', color: 'var(--primary-color)' },
+                                                { bg: 'rgba(16, 185, 129, 0.08)', border: 'rgba(16, 185, 129, 0.25)', color: 'var(--success-color)' },
+                                                { bg: 'rgba(245, 158, 11, 0.08)', border: 'rgba(245, 158, 11, 0.25)', color: 'var(--warning-color)' },
+                                                { bg: 'rgba(239, 68, 68, 0.08)', border: 'rgba(239, 68, 68, 0.25)', color: 'var(--danger-color)' },
+                                                { bg: 'rgba(6, 182, 212, 0.08)', border: 'rgba(6, 182, 212, 0.25)', color: 'var(--info-color, #06b6d4)' }
+                                            ];
+                                            const code = sub.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                                            const c = colors[code % colors.length];
+                                            return (
+                                                <td key={idx} style={{ background: c.bg, color: c.color, border: `1.5px solid ${c.border}`, fontWeight: 600, padding: '12px 8px' }}>
+                                                    <div style={{ fontSize: '0.85rem' }}>{sub}</div>
+                                                </td>
+                                            );
+                                        }
+                                    }
+
+                                    return (
+                                        <td key={idx} style={{ background: bg, color, verticalAlign: 'middle', padding: '12px 8px' }}>
+                                            {match ? (match.subject || '—') : '—'}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </Table>
+        </div>
+    );
+};
+
+function TimetableCard({ t, isOwn, isJoined, onJoin, joining, onEdit, onViewGrid }) {
     const uniqueSubjects = [...new Set(
         Object.values(t.schedule || {}).flatMap(day =>
             day.map(s => s.subject).filter(s => s && s !== 'Break / Lunch' && s !== 'Free Period')
@@ -127,30 +243,47 @@ function TimetableCard({ t, isOwn, isJoined, onJoin, joining, onEdit }) {
                 </div>
 
                 {isOwn ? (
+                    <div className="d-flex gap-2">
+                        <button
+                            onClick={onEdit}
+                            style={{
+                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                padding: '0.65rem 0.4rem', borderRadius: 12,
+                                background: 'rgba(var(--primary-rgb),0.1)',
+                                border: '1.5px solid rgba(var(--primary-rgb),0.25)',
+                                color: 'var(--primary-color)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <FaEdit size={11} /> Edit
+                        </button>
+                        <button
+                            onClick={onViewGrid}
+                            style={{
+                                flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                                padding: '0.65rem 0.4rem', borderRadius: 12,
+                                background: 'rgba(var(--primary-rgb),0.1)',
+                                border: '1.5px solid rgba(var(--primary-rgb),0.25)',
+                                color: 'var(--primary-color)', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <FaCalendarAlt size={11} /> View Grid
+                        </button>
+                    </div>
+                ) : isJoined ? (
                     <button
-                        onClick={onEdit}
+                        onClick={onViewGrid}
                         style={{
                             width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                             padding: '0.6rem', borderRadius: 12,
-                            background: 'rgba(var(--primary-rgb),0.1)',
-                            border: '1.5px solid rgba(var(--primary-rgb),0.25)',
+                            background: 'rgba(var(--primary-rgb), 0.1)',
+                            border: '1.5px solid rgba(var(--primary-rgb), 0.25)',
                             color: 'var(--primary-color)', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer',
                             transition: 'all 0.2s'
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(var(--primary-rgb),0.18)'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(var(--primary-rgb),0.1)'; }}
                     >
-                        <FaEdit size={13} /> Edit Timetable
-                    </button>
-                ) : isJoined ? (
-                    <button disabled style={{
-                        width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-                        padding: '0.6rem', borderRadius: 12,
-                        background: 'var(--success-glow)',
-                        border: '1.5px solid var(--success-glow)',
-                        color: 'var(--success-color)', fontSize: '0.85rem', fontWeight: 600, cursor: 'not-allowed'
-                    }}>
-                        <FaCheck size={13} /> Already Joined
+                        <FaCalendarAlt size={13} /> View Weekly Grid
                     </button>
                 ) : (
                     <button
@@ -184,6 +317,75 @@ export default function TimetableDiscovery() {
     const { currentUser } = useAuth();
     const navigate = useNavigate();
 
+    // Weekly Grid Modal State
+    const [showGridModal, setShowGridModal] = useState(false);
+    const [gridTimetable, setGridTimetable] = useState(null);
+    const [downloadingImage, setDownloadingImage] = useState(false);
+
+    const handleViewGrid = (t) => {
+        setGridTimetable(t);
+        setShowGridModal(true);
+    };
+
+    const handleDownloadImage = async () => {
+        const element = document.getElementById('weekly-grid-capture');
+        if (!element) return;
+        setDownloadingImage(true);
+        try {
+            const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+            const html2canvas = (await import('html2canvas')).default;
+            
+            // Clone element to render it off-screen in its full natural dimensions
+            const clone = element.cloneNode(true);
+            clone.style.position = 'absolute';
+            clone.style.top = '-9999px';
+            clone.style.left = '-9999px';
+            clone.style.width = '1200px'; // Set standard desktop width for clean render
+            clone.style.maxWidth = 'none';
+            clone.style.height = 'auto';
+            clone.style.overflow = 'visible';
+            
+            // Un-scroll wrappers inside the clone
+            const responsiveWrappers = clone.querySelectorAll('.table-responsive');
+            responsiveWrappers.forEach(w => {
+                w.style.overflow = 'visible';
+                w.style.width = 'auto';
+                w.style.maxWidth = 'none';
+            });
+
+            const tables = clone.querySelectorAll('table');
+            tables.forEach(t => {
+                t.style.width = '100%';
+                t.style.maxWidth = 'none';
+            });
+
+            document.body.appendChild(clone);
+            
+            // Wait for DOM to adjust
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            
+            const canvas = await html2canvas(clone, {
+                backgroundColor: isDark ? '#111827' : '#ffffff',
+                scale: 2.2, // High resolution
+                useCORS: true,
+                logging: false,
+                width: 1200, // Explicit layout width
+                height: clone.scrollHeight
+            });
+            
+            document.body.removeChild(clone);
+
+            const imgData = canvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = `${gridTimetable?.name || 'timetable'}_weekly_grid.png`;
+            link.href = imgData;
+            link.click();
+        } catch (err) {
+            console.error('Failed to download image', err);
+        }
+        setDownloadingImage(false);
+    };
+
     useEffect(() => { loadAllData(); }, []);
 
     const loadAllData = async () => {
@@ -194,7 +396,13 @@ export default function TimetableDiscovery() {
                 getUserCreatedTimetables(currentUser.uid)
             ]);
             setCreatedTimetables(created);
-            setTimetables(all.filter(t => !t.isPrivate));
+
+            const isAdmin = currentUser && (
+                currentUser.email === '24U123@gmail.com' ||
+                currentUser.email === 'kartikeyakk2007@gmail.com'
+            );
+
+            setTimetables(isAdmin ? all : all.filter(t => !t.isPrivate));
         } catch (e) { console.error(e); }
         setLoading(false);
     };
@@ -292,8 +500,8 @@ export default function TimetableDiscovery() {
                                     <TimetableCard
                                         t={t} isOwn={true}
                                         isJoined={t.attendees?.includes(currentUser.uid)}
-
                                         onEdit={() => navigate(`/edit-timetable/${t.id}`)}
+                                        onViewGrid={() => handleViewGrid(t)}
                                     />
                                 </Col>
                             ))}
@@ -337,6 +545,7 @@ export default function TimetableDiscovery() {
                                         isJoined={t.attendees?.includes(currentUser.uid)}
                                         onJoin={() => handleJoin(t)}
                                         joining={joining === t.id}
+                                        onViewGrid={() => handleViewGrid(t)}
                                     />
                                 </Col>
                             ))}
@@ -344,6 +553,44 @@ export default function TimetableDiscovery() {
                     )}
                 </div>
             </Container>
+
+            {/* Weekly Schedule Grid Modal */}
+            <Modal show={showGridModal} onHide={() => setShowGridModal(false)} size="lg" centered>
+                <Modal.Header closeButton className="border-bottom-0 pb-0" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Modal.Title className="fw-bold" style={{ fontSize: '1.15rem', wordBreak: 'break-word', paddingRight: '2rem', flex: '1 1 auto' }}>
+                        📅 Weekly Grid: <span className="text-primary" style={{ display: 'inline-block', wordBreak: 'break-word' }}>{gridTimetable?.name}</span>
+                    </Modal.Title>
+                </Modal.Header>
+                <Modal.Body className="p-4" style={{ background: 'var(--bg-body)' }}>
+                    {gridTimetable && (
+                        <div>
+                            <div className="alert alert-info small border-0 bg-info-subtle mb-3">
+                                💡 Time slots adjust dynamically. Colored indicators differentiate subjects, breaks, and free slots.
+                            </div>
+                            <div id="weekly-grid-capture" className="p-3 rounded-4" style={{ background: 'var(--bg-card)' }}>
+                                <div className="mb-3 d-flex justify-content-between align-items-center border-bottom pb-2">
+                                    <h5 className="fw-bold mb-0 text-primary" style={{ wordBreak: 'break-word' }}>📅 {gridTimetable.name}</h5>
+                                    <span className="text-muted small fw-bold">ClassPulse Weekly Schedule</span>
+                                </div>
+                                <WeeklyScheduleGrid schedule={gridTimetable.schedule} />
+                            </div>
+                        </div>
+                    )}
+                </Modal.Body>
+                <Modal.Footer className="border-top-0 pt-0">
+                    <Button 
+                        variant="primary" 
+                        className="rounded-pill px-4 me-2 fw-bold" 
+                        onClick={handleDownloadImage}
+                        disabled={downloadingImage}
+                    >
+                        {downloadingImage ? <Spinner size="sm" animation="border" style={{ width: 14, height: 14 }} /> : <FaDownload className="me-2" />} Download Image
+                    </Button>
+                    <Button variant="secondary" className="rounded-pill px-4" onClick={() => setShowGridModal(false)}>
+                        Close
+                    </Button>
+                </Modal.Footer>
+            </Modal>
         </>
     );
 }
