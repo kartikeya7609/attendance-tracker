@@ -106,11 +106,6 @@ function AppLayout() {
     useEffect(() => {
         if (!currentUser) return;
 
-        // Request browser notification permission
-        if ("Notification" in window && Notification.permission === "default") {
-            Notification.requestPermission();
-        }
-
         const q = query(
             collection(db, "notifications"),
             where("uid", "==", currentUser.uid),

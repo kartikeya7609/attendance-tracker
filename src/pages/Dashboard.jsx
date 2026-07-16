@@ -17,7 +17,7 @@ import {
     FaChartPie, FaCheckCircle, FaTimesCircle, FaClock,
     FaExclamationTriangle, FaChevronLeft, FaChevronRight,
     FaEdit, FaCalendarDay, FaUmbrellaBeach, FaCog,
-    FaSave, FaMedkit, FaBook
+    FaSave, FaMedkit, FaBook, FaBell
 } from "react-icons/fa";
 import SubjectDetailsModal from "../components/SubjectDetailsModal";
 import { checkAndTriggerAttendanceWarning } from "../services/notificationService";
@@ -495,6 +495,24 @@ export default function Dashboard() {
         <>
             <Navigation />
             <Container className="pb-5">
+
+                {/* ── Notification permission alert ── */}
+                {("Notification" in window && Notification.permission === "default") && (
+                    <Alert variant="warning" className="d-flex align-items-center justify-content-between p-3 mb-4 rounded-3 border-0 shadow-sm animate-fade-in flex-wrap gap-2">
+                        <div className="d-flex align-items-center gap-2">
+                            <FaBell className="text-warning animate-bounce" size={18} />
+                            <div>
+                                <span className="fw-semibold">Enable class notifications?</span>
+                                <small className="d-block text-muted">Get morning timetables and low-attendance warnings.</small>
+                            </div>
+                        </div>
+                        <Button size="sm" variant="warning" className="rounded-pill px-3" onClick={() => {
+                            Notification.requestPermission().then(() => {
+                                window.location.reload();
+                            });
+                        }}>Enable Alerts</Button>
+                    </Alert>
+                )}
 
                 {/* ── Pending class quick prompt ── */}
                 {pendingClasses.length > 0 && (

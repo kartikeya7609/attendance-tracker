@@ -40,7 +40,14 @@ export default function NotificationSettings() {
         fetchSettings();
     }, [currentUser]);
 
-    const handleToggle = (key) => {
+    const handleToggle = async (key) => {
+        if ("Notification" in window && Notification.permission === "default") {
+            try {
+                await Notification.requestPermission();
+            } catch (err) {
+                console.warn("Failed to request permission on toggle:", err);
+            }
+        }
         setSettings(prev => ({ ...prev, [key]: !prev[key] }));
     };
 
@@ -49,6 +56,15 @@ export default function NotificationSettings() {
         setSaving(true);
         setError("");
         setSuccess("");
+        
+        if ("Notification" in window && Notification.permission === "default") {
+            try {
+                await Notification.requestPermission();
+            } catch (err) {
+                console.warn("Failed to request permission on save:", err);
+            }
+        }
+
         try {
             const docRef = doc(db, "users", currentUser.uid, "settings", "notifications");
             await setDoc(docRef, settings, { merge: true });
