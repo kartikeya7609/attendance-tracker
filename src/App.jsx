@@ -329,34 +329,21 @@ function AppLayout() {
                     const classMinutes = toMinutes(cls.startTime);
                     const diff = classMinutes - currentMinutes;
 
-                    // ── Before class: send reminders at 30, 15, 10, and 5 minute marks ──
-                    // We use buckets so the scheduler (which runs every minute) never misses a mark.
-                    // Each bucket fires once per class per day.
-                    const reminderBuckets = [
-                        { min: 28, max: 31, label: "30" },  // fires when diff is 28-31 mins
-                        { min: 13, max: 16, label: "15" },  // fires when diff is 13-16 mins
-                        { min: 8,  max: 11, label: "10" },  // fires when diff is 8-11 mins
-                        { min: 3,  max: 6,  label: "5"  },  // fires when diff is 3-6 mins
-                    ];
-
-                    if (diff > 0) {
-                        for (const bucket of reminderBuckets) {
-                            if (diff >= bucket.min && diff <= bucket.max) {
-                                const storageKey = `class_reminder_${cls.subject}_${cls.startTime}_${todayStr}_${bucket.label}`;
-                                if (!localStorage.getItem(storageKey)) {
-                                    localStorage.setItem(storageKey, "true");
-                                    await addDoc(collection(db, "notifications"), {
-                                        uid: currentUser.uid,
-                                        title: `⏰ Class Reminder: ${cls.subject} in ~${bucket.label} mins`,
-                                        body: `${cls.subject} starts at ${cls.startTime}. Be ready!`,
-                                        category: "reminders",
-                                        read: false,
-                                        timestamp: Timestamp.now()
-                                        // No classData, no actions — reminders only before class
-                                    });
-                                }
-                                break; // Only one bucket per check
-                            }
+                    // ── Before class: send ONE reminder when it first enters 30-min window ──
+                    // Only fires once per class per day.
+                    if (diff > 0 && diff <= 30) {
+                        const storageKey = `class_reminder_${cls.subject}_${cls.startTime}_${todayStr}`;
+                        if (!localStorage.getItem(storageKey)) {
+                            localStorage.setItem(storageKey, "true");
+                            await addDoc(collection(db, "notifications"), {
+                                uid: currentUser.uid,
+                                title: `⏰ Class in ${diff} mins: ${cls.subject}`,
+                                body: `${cls.subject} starts at ${cls.startTime}. Be ready!`,
+                                category: "reminders",
+                                read: false,
+                                timestamp: Timestamp.now()
+                                // No classData, no actions — reminder only before class
+                            });
                         }
                     }
 
