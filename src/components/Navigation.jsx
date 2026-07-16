@@ -94,12 +94,23 @@ export default function Navigation() {
 
             const attQ = query(collection(db, 'attendance_records'), where('uid', '==', currentUser.uid));
             const attSnap = await getDocs(attQ);
-            const records = attSnap.docs.map(d => d.data()).filter(record => record.date === todayStr);
+            const allTodayRecords = attSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(record => record.date === todayStr);
+            const records = allTodayRecords.filter(r => r.status !== "Pending");
+
+            const pendingExtras = allTodayRecords.filter(r => r.status === "Pending").map(r => ({
+                subject: r.subject,
+                startTime: r.startTime,
+                endTime: r.endTime || r.startTime,
+                timetableId: r.timetableId || 'extra',
+                timetableCode: r.timetableCode || 'EXTRA',
+                existingRecordId: r.id,
+                isExtra: true
+            }));
 
             const now = new Date();
             const currentMinutes = now.getHours() * 60 + now.getMinutes();
 
-            const pending = todaysClasses.filter(cls => {
+            const pendingRegular = todaysClasses.filter(cls => {
                 const [h, m] = cls.startTime.split(':').map(Number);
                 if (currentMinutes < h * 60 + m) return false;
                 return !records.some(record =>
@@ -108,7 +119,12 @@ export default function Navigation() {
                 );
             });
 
-            setPendingClasses(pending);
+            const activePendingExtras = pendingExtras.filter(cls => {
+                const [h, m] = cls.startTime.split(':').map(Number);
+                return currentMinutes >= h * 60 + m;
+            });
+
+            setPendingClasses([...pendingRegular, ...activePendingExtras]);
         } catch (err) {
             console.error('Notification error:', err);
         }

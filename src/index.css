@@ -1491,6 +1491,12 @@ p {
   color: white;
 }
 
+.status-chip-primary.active {
+  background: var(--primary-color);
+  border-color: var(--primary-color);
+  color: white;
+}
+
 .status-chip-danger.active {
   background: var(--danger-color);
   border-color: var(--danger-color);

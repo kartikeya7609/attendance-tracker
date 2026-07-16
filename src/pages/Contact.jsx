@@ -46,11 +46,11 @@ export default function Contact() {
 
             const q = query(
                 collection(db, "feedback_reports"),
-                where("uid", "==", currentUser.uid),
-                where("timestamp", ">=", fiveMinutesAgo)
+                where("uid", "==", currentUser.uid)
             );
             const snapshot = await getDocs(q);
-            const docs = snapshot.docs.map(d => d.data());
+            const docs = snapshot.docs.map(d => d.data())
+                .filter(d => d.timestamp && d.timestamp.toMillis() >= fiveMinutesAgo.toMillis());
 
             if (docs.length >= 3) {
                 setError("You are submitting feedback too fast. Please wait a few minutes.");

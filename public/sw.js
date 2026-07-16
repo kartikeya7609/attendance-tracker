@@ -1,4 +1,4 @@
-const CACHE_NAME = "classpulse-cache-v2";
+const CACHE_NAME = "classpulse-cache-v4";
 const ASSETS = [
   "/",
   "/index.html",
@@ -7,41 +7,44 @@ const ASSETS = [
   "/pwa-512.png"
 ];
 
-// Install Event
+// ── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener("install", (e) => {
   e.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS);
-    }).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME)
+      .then((cache) => cache.addAll(ASSETS))
+      .then(() => self.skipWaiting())
       .catch(err => console.log("SW Install Cache Error:", err))
   );
 });
 
-// Activate Event
+// ── Activate ─────────────────────────────────────────────────────────────────
 self.addEventListener("activate", (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => {
-      return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(
+        keys.map((key) => { if (key !== CACHE_NAME) return caches.delete(key); })
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch Event
+// ── Fetch ─────────────────────────────────────────────────────────────────────
+// Skip caching for API calls and also for localhost (dev mode)
 self.addEventListener("fetch", (e) => {
-  // Check if request is to firestore or other API to skip cache
-  if (e.request.url.includes("firestore.googleapis.com") || e.request.url.includes("firebase")) {
-    return;
+  const url = e.request.url;
+  if (
+    url.includes("firestore.googleapis.com") ||
+    url.includes("firebase") ||
+    url.includes("googleapis.com") ||
+    url.includes("localhost") ||
+    url.includes("127.0.0.1")
+  ) {
+    return; // Let browser handle directly — do not cache
   }
+
   e.respondWith(
     caches.match(e.request).then((res) => {
       return res || fetch(e.request).then((fetchRes) => {
-        // Cache new static requests dynamically if they are local
         if (e.request.url.startsWith(self.location.origin) && e.request.method === "GET") {
           return caches.open(CACHE_NAME).then((cache) => {
             cache.put(e.request.url, fetchRes.clone());
@@ -54,19 +57,22 @@ self.addEventListener("fetch", (e) => {
   );
 });
 
-// IndexedDB helpers for background config storage
+// ── IndexedDB helpers ─────────────────────────────────────────────────────────
 function getDB() {
   return new Promise((resolve, reject) => {
     try {
       if (typeof indexedDB === "undefined") {
-        reject(new Error("IndexedDB is not supported in Service Worker"));
+        reject(new Error("IndexedDB not supported"));
         return;
       }
-      const request = indexedDB.open("ClassPulseOffline", 1);
+      const request = indexedDB.open("ClassPulseOffline", 2);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
         if (!db.objectStoreNames.contains("config")) {
           db.createObjectStore("config");
+        }
+        if (!db.objectStoreNames.contains("pendingAttendanceActions")) {
+          db.createObjectStore("pendingAttendanceActions", { keyPath: "id" });
         }
       };
       request.onsuccess = (e) => resolve(e.target.result);
@@ -77,101 +83,58 @@ function getDB() {
   });
 }
 
-function getVal(key) {
-  return getDB().then(db => {
-    if (!db) return null;
-    return new Promise((resolve, reject) => {
-      try {
-        const tx = db.transaction("config", "readonly");
-        const store = tx.objectStore("config");
-        const req = store.get(key);
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = (e) => reject(e.target.error);
-      } catch (err) {
-        reject(err);
+// Queue an attendance action to be processed by the app when it wakes up
+function queueAttendanceAction(action, classData) {
+  return getDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction("pendingAttendanceActions", "readwrite");
+    tx.objectStore("pendingAttendanceActions").put({
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      action,
+      classData,
+      createdAt: Date.now()
+    });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  }));
+}
+
+// ── Open /notification-center robustly on all platforms ──────────────────────
+// On mobile PWA, client.navigate() is unreliable. Instead we post a message
+// to navigate, and fall back to openWindow if no clients are open.
+function openNotificationCenter() {
+  const targetPath = "/notification-center";
+  const targetUrl = new URL(targetPath, self.location.origin).href;
+
+  return self.clients.matchAll({ type: "window", includeUncontrolled: true })
+    .then((clientList) => {
+      if (clientList.length > 0) {
+        // App is already open — focus it and tell it to navigate
+        const client = clientList[0];
+        client.postMessage({ type: "NAVIGATE_TO", path: targetPath });
+        return client.focus();
+      } else {
+        // App is closed — open it at the notification center URL
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
       }
     });
-  }).catch(() => null);
 }
 
-async function saveAttendanceFromNotification(action, classData) {
-  const config = await getVal("firebaseConfig");
-  const uid = await getVal("uid");
-  const userEmail = await getVal("userEmail");
-  
-  if (!config || !uid) {
-    console.error("Missing config or UID for background attendance marking");
-    return;
-  }
-  
-  if (typeof firebase === "undefined") {
-    importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js");
-    importScripts("https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js");
-  }
-  
-  if (firebase.apps.length === 0) {
-    firebase.initializeApp(config);
-  }
-  
-  const db = firebase.firestore();
-  
-  let status = "Present";
-  if (action === "attend_no") status = "Absent";
-  if (action === "class_cancelled") status = "Class Cancelled";
-  
-  const dateStr = classData.date || new Date().toISOString().slice(0, 10);
-  const subject = classData.subject;
-  const startTime = classData.startTime;
-  
-  if (!subject || !startTime) {
-    console.error("Missing subject or startTime in classData:", classData);
-    return;
-  }
-
-  // Duplicate Check to prevent duplication bug!
-  const snapshot = await db.collection("attendance_records")
-    .where("uid", "==", uid)
-    .where("date", "==", dateStr)
-    .where("subject", "==", subject)
-    .where("startTime", "==", startTime)
-    .get();
-    
-  if (!snapshot.empty) {
-    console.log("Attendance record already exists. Skipping write to prevent duplication.");
-    return;
-  }
-  
-  await db.collection("attendance_records").add({
-    uid,
-    email: userEmail || "",
-    subject,
-    date: dateStr,
-    status,
-    startTime,
-    endTime: classData.endTime || "",
-    timetableId: classData.timetableId || "",
-    timetableCode: classData.timetableCode || "",
-    timestamp: firebase.firestore.FieldValue.serverTimestamp(),
-    isExtra: false
-  });
-  
-  console.log(`Successfully marked attendance as ${status} in background!`);
-}
-
-// Push notification event listener
+// ── Push (server-sent push, future use) ──────────────────────────────────────
 self.addEventListener("push", (event) => {
   if (!event.data) return;
   try {
     const payload = event.data.json();
     const { title, body, icon, data, actions } = payload;
-    
     event.waitUntil(
       self.registration.showNotification(title, {
         body,
         icon: icon || "/pwa-192.png",
         badge: "/pwa-192.png",
         data,
-        actions: actions || []
+        actions: actions || [],
+        requireInteraction: false
       })
     );
   } catch (err) {
@@ -179,39 +142,32 @@ self.addEventListener("push", (event) => {
   }
 });
 
-// Notification click actions
+// ── Notification Click ────────────────────────────────────────────────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const action = event.action;
   const data = event.notification.data || {};
-  
+
   if (action === "attend_yes" || action === "attend_no" || action === "class_cancelled") {
+    // Queue the attendance action for the app to process when it wakes up
     event.waitUntil(
-      saveAttendanceFromNotification(action, data).then(() => {
-        // Post refresh message to all open clients
-        return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-          clientList.forEach((client) => {
-            client.postMessage({
-              type: "REFRESH_DASHBOARD"
-            });
-          });
-        });
-      }).catch(err => {
-        console.error("Background attendance record failed:", err);
-      })
+      queueAttendanceAction(action, data)
+        .then(() => openNotificationCenter())
+        .catch(err => {
+          console.error("Failed to queue attendance action:", err);
+          // Still try to open the app even if queueing failed
+          return openNotificationCenter();
+        })
     );
   } else {
-    event.waitUntil(
-      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-        for (const client of clientList) {
-          if (client.url === "/" && "focus" in client) {
-            return client.focus();
-          }
-        }
-        if (self.clients.openWindow) {
-          return self.clients.openWindow("/");
-        }
-      })
-    );
+    // Plain notification click — open notification center
+    event.waitUntil(openNotificationCenter());
+  }
+});
+
+// ── Message from app ──────────────────────────────────────────────────────────
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
   }
 });

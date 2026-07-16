@@ -6,6 +6,14 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      // Keep notification action handling in our custom worker instead of
+      // replacing it with Workbox's generated worker during production builds.
+      strategies: 'injectManifest',
+      srcDir: 'public',
+      filename: 'sw.js',
+      injectManifest: {
+        injectionPoint: undefined
+      },
       registerType: 'autoUpdate',
       includeAssets: ['pwa-192.png', 'pwa-512.png'],
       manifest: {

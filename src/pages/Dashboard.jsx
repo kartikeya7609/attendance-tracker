@@ -296,38 +296,52 @@ export default function Dashboard() {
     /* ── Quick attendance ────────────────────────────────────── */
     const handleQuickAttendance = async (cls, status) => {
         try {
-            const targetSubject = cls.subject.trim().toLowerCase();
-            const targetStart = cls.startTime.trim();
-            const targetDate = format(viewDate, "yyyy-MM-dd");
-            const exists = attendanceRecords.some(r => 
-                r.date === targetDate &&
-                r.subject.trim().toLowerCase() === targetSubject &&
-                r.startTime.trim() === targetStart
-            );
-            if (exists) {
-                toast(`⚠️ Already marked for this time slot.`, "warning");
-                return;
-            }
+            let updatedRecords;
+            if (cls.existingRecordId) {
+                const ref = doc(db, "attendance_records", cls.existingRecordId);
+                const updateData = {
+                    status,
+                    timestamp: Timestamp.now()
+                };
+                await updateDoc(ref, updateData);
+                updatedRecords = attendanceRecords.map(r => 
+                    r.id === cls.existingRecordId ? { ...r, ...updateData } : r
+                );
+                toast(`✅ Extra class ${cls.subject} marked as ${status}.`, "success");
+            } else {
+                const targetSubject = cls.subject.trim().toLowerCase();
+                const targetStart = cls.startTime.trim();
+                const targetDate = format(viewDate, "yyyy-MM-dd");
+                const exists = attendanceRecords.some(r => 
+                    r.date === targetDate &&
+                    r.subject.trim().toLowerCase() === targetSubject &&
+                    r.startTime.trim() === targetStart
+                );
+                if (exists) {
+                    toast(`⚠️ Already marked for this time slot.`, "warning");
+                    return;
+                }
 
-            const fullRecord = {
-                uid:   currentUser.uid,
-                email: currentUser.email,
-                timestamp: Timestamp.now(),
-                date:      format(viewDate, "yyyy-MM-dd"),
-                subject:   cls.subject,
-                topic:     "",
-                status,
-                startTime:     cls.startTime,
-                endTime:       cls.endTime,
-                timetableId:   cls.timetableId,
-                timetableCode: cls.timetableCode,
-                isExtra:       false,
-            };
-            const docRef = await addDoc(collection(db, "attendance_records"), fullRecord);
-            const updatedRecords = [...attendanceRecords, { id: docRef.id, ...fullRecord }];
+                const fullRecord = {
+                    uid:   currentUser.uid,
+                    email: currentUser.email,
+                    timestamp: Timestamp.now(),
+                    date:      format(viewDate, "yyyy-MM-dd"),
+                    subject:   cls.subject,
+                    topic:     "",
+                    status,
+                    startTime:     cls.startTime,
+                    endTime:       cls.endTime,
+                    timetableId:   cls.timetableId,
+                    timetableCode: cls.timetableCode,
+                    isExtra:       cls.isExtra || false,
+                };
+                const docRef = await addDoc(collection(db, "attendance_records"), fullRecord);
+                updatedRecords = [...attendanceRecords, { id: docRef.id, ...fullRecord }];
+                toast(`✅ ${cls.subject} marked as ${status}.`, "success");
+            }
             setAttendanceRecords(updatedRecords);
             recalcStats(updatedRecords);
-            toast(`✅ ${cls.subject} marked as ${status}.`, "success");
         } catch (error) {
             console.error("Failed to save quick attendance:", error);
             toast("❌ Failed to save attendance.", "danger");
@@ -446,11 +460,39 @@ export default function Dashboard() {
     };
 
     /* ── Pending prompt (notification bar) ─────────────────── */
-    const pendingClasses = dailySchedule.filter(cls => {
-        if (activeHoliday) return false;
-        const s = getClassStatus(cls);
-        return !currentDayRecord(cls) && (s === "past_open" || s === "ongoing");
-    }).slice(0, 1);
+    const pendingExtraRecords = attendanceRecords.filter(r => {
+        const todayStr = format(viewDate, "yyyy-MM-dd");
+        if (r.date !== todayStr || r.status !== "Pending") return false;
+        
+        const toMinutes = (timeStr) => {
+            if (!timeStr) return 0;
+            const [h, m] = timeStr.split(':').map(Number);
+            return h * 60 + m;
+        };
+        const now = new Date();
+        const currentMinutes = now.getHours() * 60 + now.getMinutes();
+        const startMinutes = toMinutes(r.startTime);
+        return currentMinutes >= startMinutes;
+    });
+
+    const mappedPendingExtras = pendingExtraRecords.map(r => ({
+        subject: r.subject,
+        startTime: r.startTime,
+        endTime: r.endTime || r.startTime,
+        timetableId: r.timetableId || "extra",
+        timetableCode: r.timetableCode || "EXTRA",
+        existingRecordId: r.id,
+        isExtra: true
+    }));
+
+    const pendingClasses = [
+        ...dailySchedule.filter(cls => {
+            if (activeHoliday) return false;
+            const s = getClassStatus(cls);
+            return !currentDayRecord(cls) && (s === "past_open" || s === "ongoing");
+        }),
+        ...mappedPendingExtras
+    ].slice(0, 1);
 
     /* ── Heatmap ─────────────────────────────────────────────── */
     const heatmapData = (() => {

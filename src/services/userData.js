@@ -2,7 +2,7 @@ import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase
 import { parseISO, isValid, format, eachDayOfInterval, isWeekend } from "date-fns";
 import { db } from "./firebase";
 
-export const NON_ATTENDANCE_STATUSES = ["Class Cancelled", "Postponed", "Holiday"];
+export const NON_ATTENDANCE_STATUSES = ["Class Cancelled", "Postponed", "Holiday", "Pending"];
 
 export function getMedicalLeaveMode(subjectName, subjectSettings = {}) {
     const settings = subjectSettings[subjectName] || {};

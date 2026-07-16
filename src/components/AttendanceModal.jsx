@@ -95,7 +95,12 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
         onHide();
     };
 
-    const activeCfg = STATUS_CONFIG.find(s => s.key === status);
+    const finalStatusConfig = isExtra ? [
+        ...STATUS_CONFIG,
+        { key: 'Pending',        label: '⏳ Pre-Register',     color: 'primary',   desc: 'Schedule this extra class beforehand, the app will remind you when the time comes' }
+    ] : STATUS_CONFIG;
+
+    const activeCfg = finalStatusConfig.find(s => s.key === status);
 
     return (
         <Modal show={show} onHide={onHide} centered className="attendance-modal" size="sm">
@@ -166,7 +171,7 @@ export default function AttendanceModal({ show, onHide, classData, subjects = []
                     <Form.Group className="mb-2">
                         <Form.Label className="small text-muted fw-bold mb-2">Attendance Status</Form.Label>
                         <div className="d-flex flex-wrap gap-2 mb-2">
-                            {STATUS_CONFIG.map(cfg => (
+                            {finalStatusConfig.map(cfg => (
                                 <button
                                     key={cfg.key}
                                     type="button"

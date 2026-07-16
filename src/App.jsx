@@ -1,7 +1,7 @@
-import React, { useEffect, lazy, Suspense } from 'react';
+import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { db } from './services/firebase';
-import { collection, query, where, onSnapshot, getDocs, addDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, addDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import PrivateRoute from './components/PrivateRoute';
@@ -31,11 +31,14 @@ function getDB() {
                 reject(new Error("IndexedDB is not supported in this environment"));
                 return;
             }
-            const request = indexedDB.open("ClassPulseOffline", 1);
+            const request = indexedDB.open("ClassPulseOffline", 2);
             request.onupgradeneeded = (e) => {
                 const db = e.target.result;
                 if (!db.objectStoreNames.contains("config")) {
                     db.createObjectStore("config");
+                }
+                if (!db.objectStoreNames.contains("pendingAttendanceActions")) {
+                    db.createObjectStore("pendingAttendanceActions", { keyPath: "id" });
                 }
             };
             request.onsuccess = (e) => resolve(e.target.result);
@@ -44,6 +47,71 @@ function getDB() {
             reject(err);
         }
     });
+}
+
+function getPendingAttendanceActions() {
+    return getDB().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction("pendingAttendanceActions", "readonly");
+        const request = tx.objectStore("pendingAttendanceActions").getAll();
+        request.onsuccess = () => resolve(request.result || []);
+        request.onerror = () => reject(request.error);
+    }));
+}
+
+function removePendingAttendanceAction(id) {
+    return getDB().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction("pendingAttendanceActions", "readwrite");
+        tx.objectStore("pendingAttendanceActions").delete(id);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    }));
+}
+
+async function saveNotificationAttendance(currentUser, action, classData) {
+    const statusByAction = {
+        attend_yes: "Present",
+        attend_no: "Absent",
+        class_cancelled: "Class Cancelled"
+    };
+    const status = statusByAction[action];
+    if (!status || !classData?.subject || !classData?.startTime) {
+        throw new Error("The notification does not contain valid class information.");
+    }
+
+    const date = classData.date || new Date().toISOString().slice(0, 10);
+    const snap = await getDocs(query(
+        collection(db, "attendance_records"),
+        where("uid", "==", currentUser.uid),
+        where("date", "==", date)
+    ));
+    const existing = snap.docs.find(record => {
+        const data = record.data();
+        return data.subject === classData.subject && data.startTime === classData.startTime;
+    });
+
+    if (existing) {
+        if (existing.data().status === "Pending") {
+            await updateDoc(doc(db, "attendance_records", existing.id), { status, timestamp: Timestamp.now() });
+        }
+    } else {
+        await addDoc(collection(db, "attendance_records"), {
+            uid: currentUser.uid,
+            email: currentUser.email || "",
+            subject: classData.subject,
+            date,
+            status,
+            startTime: classData.startTime,
+            endTime: classData.endTime || "",
+            timetableId: classData.timetableId || "",
+            timetableCode: classData.timetableCode || "",
+            timestamp: Timestamp.now(),
+            isExtra: classData.isExtra || false
+        });
+    }
+
+    if (classData.notificationId) {
+        await updateDoc(doc(db, "notifications", classData.notificationId), { read: true });
+    }
 }
 
 function setVal(key, val) {
@@ -68,6 +136,7 @@ function setVal(key, val) {
 function AppLayout() {
     const { currentUser } = useAuth();
     const location = useLocation();
+    const [attendanceActionSignal, setAttendanceActionSignal] = useState(0);
     const showMobileNav = currentUser && location.pathname !== '/login';
 
     useEffect(() => {
@@ -90,10 +159,24 @@ function AppLayout() {
         // Listen for background UI updates from Service Worker
         if (navigator.serviceWorker) {
             const handleSWMessage = (event) => {
-                if (event.data && event.data.type === "REFRESH_DASHBOARD") {
-                    if (window.__dashboardRefresh) {
-                        window.__dashboardRefresh();
-                    }
+                if (!event.data) return;
+
+                if (event.data.type === "REFRESH_DASHBOARD") {
+                    if (window.__dashboardRefresh) window.__dashboardRefresh();
+                }
+
+                if (event.data.type === "ATTENDANCE_ACTION_QUEUED") {
+                    setAttendanceActionSignal(signal => signal + 1);
+                }
+
+                // SW sends this when user taps a notification while app is open (mobile)
+                // We use React Router navigation instead of client.navigate() for reliability
+                if (event.data.type === "NAVIGATE_TO" && event.data.path) {
+                    // Trigger attendance action processing too (in case actions were queued)
+                    setAttendanceActionSignal(signal => signal + 1);
+                    // Navigate using the browser history API
+                    window.history.pushState({}, "", event.data.path);
+                    window.dispatchEvent(new PopStateEvent("popstate"));
                 }
             };
             navigator.serviceWorker.addEventListener("message", handleSWMessage);
@@ -102,6 +185,33 @@ function AppLayout() {
             };
         }
     }, [currentUser]);
+
+    useEffect(() => {
+        if (!currentUser) return;
+
+        let cancelled = false;
+        const processQueuedActions = async () => {
+            try {
+                const actions = await getPendingAttendanceActions();
+                for (const pending of actions) {
+                    if (cancelled) return;
+                    try {
+                        await saveNotificationAttendance(currentUser, pending.action, pending.classData);
+                        await removePendingAttendanceAction(pending.id);
+                        if (window.__dashboardRefresh) window.__dashboardRefresh();
+                    } catch (err) {
+                        // Keep the action queued so a transient offline/auth failure can retry.
+                        console.error("Failed to save notification attendance:", err);
+                    }
+                }
+            } catch (err) {
+                console.error("Failed to read notification actions:", err);
+            }
+        };
+
+        processQueuedActions();
+        return () => { cancelled = true; };
+    }, [currentUser, attendanceActionSignal]);
 
     useEffect(() => {
         if (!currentUser) return;
@@ -122,7 +232,7 @@ function AppLayout() {
 
             snapshot.docChanges().forEach((change) => {
                 if (change.type === "added") {
-                    const data = change.doc.data();
+                    const data = { ...change.doc.data(), notificationId: change.doc.id };
                     if ("Notification" in window && Notification.permission === "granted") {
                         if (navigator.serviceWorker && navigator.serviceWorker.controller) {
                             navigator.serviceWorker.ready.then((registration) => {
@@ -130,26 +240,37 @@ function AppLayout() {
                                     body: data.body || "",
                                     icon: "/pwa-192.png",
                                     badge: "/pwa-192.png",
-                                    data: data.classData || {},
+                                    data: { ...(data.classData || {}), notificationId: data.notificationId },
                                     actions: data.actions || []
                                 });
                             });
                         } else {
-                            new Notification(data.title || "ClassPulse Alert", {
+                            const notif = new Notification(data.title || "ClassPulse Alert", {
                                 body: data.body || "",
                                 icon: "/pwa-192.png"
                             });
+                            notif.onclick = () => {
+                                window.focus();
+                                window.location.href = "/notification-center";
+                            };
                         }
                     }
                 }
             });
         });
 
-        // Loop to trigger reminders 30 mins before first class (every 5 mins)
+        // Loop to trigger reminders 30 mins before each class (every 5 mins)
         const checkFirstClassNotification = async () => {
             try {
                 const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
                 const todayName = days[new Date().getDay()];
+                const todayStr = new Date().toISOString().slice(0, 10);
+
+                // Clean up any old-format notification keys from previous code versions
+                // (old format: notif_SUBJECT_TIME_DATE_group_N)
+                Object.keys(localStorage)
+                    .filter(k => k.startsWith('notif_'))
+                    .forEach(k => localStorage.removeItem(k));
                 
                 const timetablesSnap = await getDocs(query(
                     collection(db, "public_timetables")
@@ -159,8 +280,6 @@ function AppLayout() {
                     .map(d => ({ id: d.id, ...d.data() }))
                     .filter(t => t.attendees?.includes(currentUser.uid));
                     
-                if (joined.length === 0) return;
-                
                 const todayClasses = [];
                 joined.forEach(t => {
                     const daySchedule = t.schedule?.[todayName] || [];
@@ -174,6 +293,26 @@ function AppLayout() {
                         }
                     });
                 });
+
+                // Get scheduled Pending extra classes for today
+                const extraSnap = await getDocs(query(
+                    collection(db, "attendance_records"),
+                    where("uid", "==", currentUser.uid),
+                    where("date", "==", todayStr),
+                    where("status", "==", "Pending")
+                ));
+                extraSnap.docs.forEach(docSnap => {
+                    const data = docSnap.data();
+                    todayClasses.push({
+                        subject: data.subject,
+                        startTime: data.startTime,
+                        endTime: data.endTime || data.startTime,
+                        timetableId: data.timetableId || "extra",
+                        timetableCode: data.timetableCode || "EXTRA",
+                        existingRecordId: docSnap.id,
+                        isExtra: true
+                    });
+                });
                 
                 if (todayClasses.length === 0) return;
                 
@@ -183,49 +322,77 @@ function AppLayout() {
                     return h * 60 + m;
                 };
                 
-                todayClasses.sort((a, b) => toMinutes(a.startTime) - toMinutes(b.startTime));
-                const firstClass = todayClasses[0];
-                if (!firstClass) return;
-                
                 const now = new Date();
                 const currentMinutes = now.getHours() * 60 + now.getMinutes();
-                const firstClassMinutes = toMinutes(firstClass.startTime);
-                
-                const diff = firstClassMinutes - currentMinutes;
-                
-                if (diff > 0 && diff <= 30) {
-                    const intervalGroup = Math.floor(diff / 5);
-                    const todayStr = now.toISOString().slice(0, 10);
-                    const storageKey = `notif_first_class_${todayStr}_group_${intervalGroup}`;
-                    
-                    if (!localStorage.getItem(storageKey)) {
-                        localStorage.setItem(storageKey, "true");
-                        
-                        await addDoc(collection(db, "notifications"), {
-                            uid: currentUser.uid,
-                            title: `⏰ First Class Reminder (${diff} mins left)`,
-                            body: `${firstClass.subject} starts at ${firstClass.startTime}. Mark your attendance directly below.`,
-                            category: "reminders",
-                            read: false,
-                            timestamp: Timestamp.now(),
-                            actions: [
-                                { action: "attend_yes", title: "✅ Present" },
-                                { action: "attend_no", title: "❌ Absent" },
-                                { action: "class_cancelled", title: "🚫 Cancelled" }
-                            ],
-                            classData: {
-                                subject: firstClass.subject,
-                                startTime: firstClass.startTime,
-                                endTime: firstClass.endTime || "",
-                                date: todayStr,
-                                timetableId: firstClass.timetableId,
-                                timetableCode: firstClass.timetableCode
+
+                for (const cls of todayClasses) {
+                    const classMinutes = toMinutes(cls.startTime);
+                    const diff = classMinutes - currentMinutes;
+
+                    // ── Before class: send reminders at 30, 15, 10, and 5 minute marks ──
+                    // We use buckets so the scheduler (which runs every minute) never misses a mark.
+                    // Each bucket fires once per class per day.
+                    const reminderBuckets = [
+                        { min: 28, max: 31, label: "30" },  // fires when diff is 28-31 mins
+                        { min: 13, max: 16, label: "15" },  // fires when diff is 13-16 mins
+                        { min: 8,  max: 11, label: "10" },  // fires when diff is 8-11 mins
+                        { min: 3,  max: 6,  label: "5"  },  // fires when diff is 3-6 mins
+                    ];
+
+                    if (diff > 0) {
+                        for (const bucket of reminderBuckets) {
+                            if (diff >= bucket.min && diff <= bucket.max) {
+                                const storageKey = `class_reminder_${cls.subject}_${cls.startTime}_${todayStr}_${bucket.label}`;
+                                if (!localStorage.getItem(storageKey)) {
+                                    localStorage.setItem(storageKey, "true");
+                                    await addDoc(collection(db, "notifications"), {
+                                        uid: currentUser.uid,
+                                        title: `⏰ Class Reminder: ${cls.subject} in ~${bucket.label} mins`,
+                                        body: `${cls.subject} starts at ${cls.startTime}. Be ready!`,
+                                        category: "reminders",
+                                        read: false,
+                                        timestamp: Timestamp.now()
+                                        // No classData, no actions — reminders only before class
+                                    });
+                                }
+                                break; // Only one bucket per check
                             }
-                        });
+                        }
+                    }
+
+                    // ── After class starts: send ONE attendance prompt within 5 mins ──
+                    if (diff <= 0 && diff >= -5) {
+                        const storageKey = `attendance_prompt_${cls.subject}_${cls.startTime}_${todayStr}`;
+                        if (!localStorage.getItem(storageKey)) {
+                            localStorage.setItem(storageKey, "true");
+                            await addDoc(collection(db, "notifications"), {
+                                uid: currentUser.uid,
+                                title: `📝 Mark Attendance: ${cls.subject}`,
+                                body: `${cls.subject} started at ${cls.startTime}. Did you attend? Tap to mark.`,
+                                category: "reminders",
+                                read: false,
+                                timestamp: Timestamp.now(),
+                                actions: [
+                                    { action: "attend_yes", title: "✅ Present" },
+                                    { action: "attend_no", title: "❌ Absent" },
+                                    { action: "class_cancelled", title: "🚫 Cancelled" }
+                                ],
+                                classData: {
+                                    subject: cls.subject,
+                                    startTime: cls.startTime,
+                                    endTime: cls.endTime || "",
+                                    date: todayStr,
+                                    timetableId: cls.timetableId,
+                                    timetableCode: cls.timetableCode,
+                                    isExtra: cls.isExtra || false,
+                                    existingRecordId: cls.existingRecordId || ""
+                                }
+                            });
+                        }
                     }
                 }
             } catch (err) {
-                console.error("First class notification scheduler error:", err);
+                console.error("Notification scheduler error:", err);
             }
         };
 
