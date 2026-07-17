@@ -36,6 +36,9 @@ self.addEventListener("fetch", (e) => {
     url.includes("firestore.googleapis.com") ||
     url.includes("firebase") ||
     url.includes("googleapis.com") ||
+    url.includes("google.com") ||
+    url.includes("googletagmanager.com") ||
+    url.includes("google-analytics.com") ||
     url.includes("localhost") ||
     url.includes("127.0.0.1")
   ) {
@@ -53,7 +56,13 @@ self.addEventListener("fetch", (e) => {
         }
         return fetchRes;
       });
-    }).catch(() => caches.match("/"))
+    }).catch((err) => {
+      // Only serve the index.html fallback for navigation / page requests
+      if (e.request.mode === "navigate" || (e.request.method === "GET" && e.request.headers.get("accept")?.includes("text/html"))) {
+        return caches.match("/");
+      }
+      throw err;
+    })
   );
 });
 

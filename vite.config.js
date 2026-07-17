@@ -12,7 +12,8 @@ export default defineConfig({
       srcDir: 'public',
       filename: 'sw.js',
       injectManifest: {
-        injectionPoint: undefined
+        injectionPoint: undefined,
+        rollupFormat: 'iife'
       },
       registerType: 'autoUpdate',
       includeAssets: ['pwa-192.png', 'pwa-512.png'],

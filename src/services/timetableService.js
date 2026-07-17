@@ -71,9 +71,8 @@ export const joinTimetable = async (uid, code) => {
             joinedAt: Timestamp.now()
         });
 
-        // Set semesterStartDate to today on join
-        const todayStr = new Date().toISOString().slice(0, 10);
-        await setDoc(doc(db, "users", uid), { semesterStartDate: todayStr }, { merge: true });
+        // semesterStartDate is intentionally NOT reset on join.
+        // It is only changed when the user explicitly sets it in their profile or resets the semester.
 
         await updateDoc(doc(db, "public_timetables", timetableId), {
             attendees: arrayUnion(uid)
@@ -184,9 +183,8 @@ export const createPrivateTimetable = async (user, timetableData) => {
         joinedAt: Timestamp.now()
     });
 
-    // Set semesterStartDate to today on create
-    const todayStr = new Date().toISOString().slice(0, 10);
-    await setDoc(doc(db, "users", user.uid), { semesterStartDate: todayStr }, { merge: true });
+    // semesterStartDate is intentionally NOT reset on create.
+    // It is only changed when the user explicitly sets it in their profile or resets the semester.
 
     return { id: docRef.id };
 };
@@ -209,11 +207,8 @@ export const updateTimetable = async (timetableId, timetableData, updaterUid) =>
         updatedAt: Timestamp.now()
     });
 
-    if (updaterUid) {
-        // Set semesterStartDate to today on edit
-        const todayStr = new Date().toISOString().slice(0, 10);
-        await setDoc(doc(db, "users", updaterUid), { semesterStartDate: todayStr }, { merge: true });
-    }
+    // semesterStartDate is intentionally NOT reset on edit.
+    // It is only changed when the user explicitly sets it in their profile or resets the semester.
 
     return { id: timetableId };
 };

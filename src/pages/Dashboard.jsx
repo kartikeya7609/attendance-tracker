@@ -53,6 +53,7 @@ export default function Dashboard() {
     const [loading, setLoading]                   = useState(true);
     const [stats, setStats]                       = useState({ present: 0, total: 0, percentage: 0 });
     const [allSubjects, setAllSubjects]           = useState([]);
+    const [userFeedbacks, setUserFeedbacks]       = useState([]);
 
     /* ── Semester settings ───────────────────────────────────── */
     const [semesterStartDate, setSemesterStartDate] = useState("");
@@ -149,6 +150,17 @@ export default function Dashboard() {
             const subQ = query(collection(db, "subjects"), where("uid", "==", currentUser.uid));
             const subSnap = await getDocs(subQ);
             setAllSubjects(subSnap.docs.map(d => d.data().name).sort());
+
+            // Fetch user feedback and complaints
+            const feedbackQ = query(collection(db, "feedback_reports"), where("uid", "==", currentUser.uid));
+            const feedbackSnap = await getDocs(feedbackQ);
+            const feedbackList = feedbackSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            feedbackList.sort((a, b) => {
+                const tA = a.timestamp?.seconds || 0;
+                const tB = b.timestamp?.seconds || 0;
+                return tB - tA;
+            });
+            setUserFeedbacks(feedbackList);
         } catch (error) {
             console.error("Dashboard Load Error:", error);
         }
@@ -537,6 +549,56 @@ export default function Dashboard() {
         <>
             <Navigation />
             <Container className="pb-5">
+
+                {/* ── Feedback / Complaints tracking section ── */}
+                {userFeedbacks.length > 0 && (
+                    <div className="mb-4 animate-fade-in">
+                        <div className="d-flex align-items-center justify-content-between mb-2">
+                            <span className="text-secondary text-uppercase small fw-bold" style={{ letterSpacing: "0.05em" }}>
+                                📋 My Complaints & Feedback Tickets
+                            </span>
+                            <span className="text-muted small fw-semibold">
+                                {userFeedbacks.filter(f => f.status !== 'Resolved').length} Active
+                            </span>
+                        </div>
+                        <div className="d-flex flex-column gap-2 overflow-auto mb-4" style={{ maxHeight: '180px', padding: '2px' }}>
+                            {userFeedbacks.slice(0, 3).map((f) => {
+                                const dateStr = f.timestamp?.toDate ? f.timestamp.toDate().toLocaleDateString() : 'Recent';
+                                const getBadgeBg = (status) => {
+                                    switch (status?.toLowerCase()) {
+                                        case 'resolved': return 'success';
+                                        case 'in progress': return 'warning';
+                                        case 'reviewed': return 'info';
+                                        default: return 'primary';
+                                    }
+                                };
+                                return (
+                                    <div key={f.id} className="p-3 shadow-sm border-0 bg-surface rounded-3 d-flex align-items-center justify-content-between gap-3 border-start border-4 border-primary">
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                            <div className="d-flex align-items-center gap-2 mb-1 flex-wrap">
+                                                <Badge bg="secondary" className="small" style={{ fontSize: '0.65rem' }}>{f.category || 'Feedback'}</Badge>
+                                                <span className="text-muted small" style={{ fontSize: '0.7rem' }}>Submitted: {dateStr}</span>
+                                                {f.timetableName && (
+                                                    <span className="text-info small fw-semibold text-truncate" style={{ fontSize: '0.7rem', maxWidth: '150px' }}>
+                                                        · {f.timetableName}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <p className="mb-0 text-secondary text-truncate" style={{ fontSize: '0.85rem' }} title={f.message}>
+                                                {f.message}
+                                            </p>
+                                        </div>
+                                        <div>
+                                            <Badge bg={getBadgeBg(f.status)} className="px-2 py-1 rounded-pill fw-bold text-uppercase" style={{ fontSize: '0.65rem', letterSpacing: '0.04em' }}>
+                                                {f.status || 'New'}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+                )}
 
                 {/* ── Notification permission alert ── */}
                 {("Notification" in window && Notification.permission === "default") && (
