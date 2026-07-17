@@ -5,7 +5,7 @@ import {
     getAuth,
     GoogleAuthProvider
 } from "firebase/auth";
-import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, memoryLocalCache } from "firebase/firestore";
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -23,11 +23,23 @@ const analytics = getAnalytics(app);
 
 const auth = getAuth(app);
 
-const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({
-        tabManager: persistentMultipleTabManager()
-    })
-});
+// Try to use persistent local cache (requires IndexedDB).
+// On mobile browsers with private mode or strict storage settings,
+// IndexedDB can be blocked — in that case fall back to memory cache
+// to prevent a crash that shows the ErrorBoundary instead of the app.
+let db;
+try {
+    db = initializeFirestore(app, {
+        localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager()
+        })
+    });
+} catch (e) {
+    console.warn("Firestore persistent cache unavailable, falling back to memory cache:", e);
+    db = initializeFirestore(app, {
+        localCache: memoryLocalCache()
+    });
+}
 const googleProvider = new GoogleAuthProvider();
 
 googleProvider.setCustomParameters({
