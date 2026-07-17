@@ -1,17 +1,15 @@
-const CACHE_NAME = "classpulse-cache-v4";
-const ASSETS = [
-  "/",
-  "/index.html",
-  "/manifest.json",
+const CACHE_NAME = "classpulse-cache-v5"; // Bumped — forces old v4 cache eviction
+const STATIC_ASSETS = [
   "/pwa-192.png",
-  "/pwa-512.png"
+  "/pwa-512.png",
+  "/manifest.json"
 ];
 
 // ── Install ──────────────────────────────────────────────────────────────────
 self.addEventListener("install", (e) => {
   e.waitUntil(
     caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ASSETS))
+      .then((cache) => cache.addAll(STATIC_ASSETS))
       .then(() => self.skipWaiting())
       .catch(err => console.log("SW Install Cache Error:", err))
   );
@@ -29,9 +27,10 @@ self.addEventListener("activate", (e) => {
 });
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
-// Skip caching for API calls and also for localhost (dev mode)
 self.addEventListener("fetch", (e) => {
   const url = e.request.url;
+
+  // Always bypass — do not intercept these external services
   if (
     url.includes("firestore.googleapis.com") ||
     url.includes("firebase") ||
@@ -42,26 +41,54 @@ self.addEventListener("fetch", (e) => {
     url.includes("localhost") ||
     url.includes("127.0.0.1")
   ) {
-    return; // Let browser handle directly — do not cache
+    return;
   }
 
+  // JS / CSS chunks — NETWORK FIRST so new deployments always load fresh files
+  // This prevents "Failed to fetch dynamically imported module" after Vercel redeploys
+  if (url.includes("/assets/") && (url.endsWith(".js") || url.endsWith(".css"))) {
+    e.respondWith(
+      fetch(e.request)
+        .then((fetchRes) => {
+          // Cache the fresh response for offline fallback
+          const clone = fetchRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          return fetchRes;
+        })
+        .catch(() => {
+          // If network fails, serve from cache (offline fallback)
+          return caches.match(e.request);
+        })
+    );
+    return;
+  }
+
+  // Navigation requests (HTML pages) — NETWORK FIRST so index.html always has latest chunk refs
+  if (e.request.mode === "navigate") {
+    e.respondWith(
+      fetch(e.request)
+        .then((fetchRes) => {
+          const clone = fetchRes.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          return fetchRes;
+        })
+        .catch(() => caches.match("/"))
+    );
+    return;
+  }
+
+  // Images, fonts, icons — CACHE FIRST (safe to cache long-term)
   e.respondWith(
     caches.match(e.request).then((res) => {
       return res || fetch(e.request).then((fetchRes) => {
-        if (e.request.url.startsWith(self.location.origin) && e.request.method === "GET") {
-          return caches.open(CACHE_NAME).then((cache) => {
-            cache.put(e.request.url, fetchRes.clone());
-            return fetchRes;
-          });
+        if (e.request.method === "GET") {
+          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, fetchRes.clone()));
         }
         return fetchRes;
       });
-    }).catch((err) => {
-      // Only serve the index.html fallback for navigation / page requests
-      if (e.request.mode === "navigate" || (e.request.method === "GET" && e.request.headers.get("accept")?.includes("text/html"))) {
-        return caches.match("/");
-      }
-      throw err;
+    }).catch(() => {
+      if (e.request.mode === "navigate") return caches.match("/");
+      throw new Error("Resource unavailable offline");
     })
   );
 });
