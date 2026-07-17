@@ -216,48 +216,62 @@ function AppLayout() {
     useEffect(() => {
         if (!currentUser) return;
 
-        const q = query(
-            collection(db, "notifications"),
-            where("uid", "==", currentUser.uid),
-            where("read", "==", false)
-        );
+        let unsubscribe = () => {};
+        let notificationInterval = null;
 
-        let isInitialLoad = true;
+        try {
+            const q = query(
+                collection(db, "notifications"),
+                where("uid", "==", currentUser.uid),
+                where("read", "==", false)
+            );
 
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            if (isInitialLoad) {
-                isInitialLoad = false;
-                return;
-            }
+            let isInitialLoad = true;
 
-            snapshot.docChanges().forEach((change) => {
-                if (change.type === "added") {
-                    const data = { ...change.doc.data(), notificationId: change.doc.id };
-                    if ("Notification" in window && Notification.permission === "granted") {
-                        if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-                            navigator.serviceWorker.ready.then((registration) => {
-                                registration.showNotification(data.title || "ClassPulse Alert", {
-                                    body: data.body || "",
-                                    icon: "/pwa-192.png",
-                                    badge: "/pwa-192.png",
-                                    data: { ...(data.classData || {}), notificationId: data.notificationId },
-                                    actions: data.actions || []
-                                });
-                            });
-                        } else {
-                            const notif = new Notification(data.title || "ClassPulse Alert", {
-                                body: data.body || "",
-                                icon: "/pwa-192.png"
-                            });
-                            notif.onclick = () => {
-                                window.focus();
-                                window.location.href = "/notification-center";
-                            };
+            unsubscribe = onSnapshot(q, (snapshot) => {
+                if (isInitialLoad) {
+                    isInitialLoad = false;
+                    return;
+                }
+
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === "added") {
+                        const data = { ...change.doc.data(), notificationId: change.doc.id };
+                        if ("Notification" in window && Notification.permission === "granted") {
+                            if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+                                navigator.serviceWorker.ready.then((registration) => {
+                                    registration.showNotification(data.title || "ClassPulse Alert", {
+                                        body: data.body || "",
+                                        icon: "/pwa-192.png",
+                                        badge: "/pwa-192.png",
+                                        data: { ...(data.classData || {}), notificationId: data.notificationId },
+                                        actions: data.actions || []
+                                    });
+                                }).catch(err => console.warn("SW showNotification failed:", err));
+                            } else {
+                                try {
+                                    const notif = new Notification(data.title || "ClassPulse Alert", {
+                                        body: data.body || "",
+                                        icon: "/pwa-192.png"
+                                    });
+                                    notif.onclick = () => {
+                                        window.focus();
+                                        window.location.href = "/notification-center";
+                                    };
+                                } catch (notifErr) {
+                                    console.warn("Web Notification failed:", notifErr);
+                                }
+                            }
                         }
                     }
-                }
+                });
+            }, (err) => {
+                // Firestore snapshot error — log but do NOT crash the app
+                console.error("Notifications snapshot error:", err);
             });
-        });
+        } catch (err) {
+            console.error("Failed to set up notifications listener:", err);
+        }
 
         // Loop to trigger reminders 30 mins before each class (every 5 mins)
         const checkFirstClassNotification = async () => {
@@ -384,11 +398,11 @@ function AppLayout() {
         };
 
         checkFirstClassNotification();
-        const notificationInterval = setInterval(checkFirstClassNotification, 60000);
+        notificationInterval = setInterval(checkFirstClassNotification, 60000);
 
         return () => {
             unsubscribe();
-            clearInterval(notificationInterval);
+            if (notificationInterval) clearInterval(notificationInterval);
         };
     }, [currentUser]);
 
