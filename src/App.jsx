@@ -11,17 +11,26 @@ import MobileNav from './components/MobileNav';
 import { useAuth } from './contexts/AuthContext';
 import ErrorBoundary from './components/ErrorBoundary';
 
-const Login = lazy(() => import('./pages/Login'));
-const Dashboard = lazy(() => import('./pages/Dashboard'));
-const AttendanceHistory = lazy(() => import('./pages/AttendanceHistory'));
-const Profile = lazy(() => import('./pages/Profile'));
-const Subjects = lazy(() => import('./pages/Subjects'));
-const CreateTimetable = lazy(() => import('./pages/CreateTimetable'));
-const TimetableDiscovery = lazy(() => import('./pages/TimetableDiscovery'));
-const AdminResponses = lazy(() => import('./pages/AdminResponses'));
-const Contact = lazy(() => import('./pages/Contact'));
-const NotificationCenter = lazy(() => import('./pages/NotificationCenter'));
-const NotificationSettings = lazy(() => import('./pages/NotificationSettings'));
+const lazyWithRetry = (componentImport) =>
+    lazy(() =>
+        componentImport().catch((error) => {
+            console.error("Error loading dynamically imported module, retrying via page reload...", error);
+            window.location.reload();
+            return { default: () => null };
+        })
+    );
+
+const Login = lazyWithRetry(() => import('./pages/Login'));
+const Dashboard = lazyWithRetry(() => import('./pages/Dashboard'));
+const AttendanceHistory = lazyWithRetry(() => import('./pages/AttendanceHistory'));
+const Profile = lazyWithRetry(() => import('./pages/Profile'));
+const Subjects = lazyWithRetry(() => import('./pages/Subjects'));
+const CreateTimetable = lazyWithRetry(() => import('./pages/CreateTimetable'));
+const TimetableDiscovery = lazyWithRetry(() => import('./pages/TimetableDiscovery'));
+const AdminResponses = lazyWithRetry(() => import('./pages/AdminResponses'));
+const Contact = lazyWithRetry(() => import('./pages/Contact'));
+const NotificationCenter = lazyWithRetry(() => import('./pages/NotificationCenter'));
+const NotificationSettings = lazyWithRetry(() => import('./pages/NotificationSettings'));
 
 // IndexedDB helper for Service Worker communication
 function getDB() {

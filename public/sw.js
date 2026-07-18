@@ -50,9 +50,11 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(e.request)
         .then((fetchRes) => {
-          // Cache the fresh response for offline fallback
-          const clone = fetchRes.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          // Cache the fresh response for offline fallback only if status is OK (200-299)
+          if (fetchRes.ok) {
+            const clone = fetchRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
           return fetchRes;
         })
         .catch(() => {
@@ -68,8 +70,10 @@ self.addEventListener("fetch", (e) => {
     e.respondWith(
       fetch(e.request)
         .then((fetchRes) => {
-          const clone = fetchRes.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          if (fetchRes.ok) {
+            const clone = fetchRes.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+          }
           return fetchRes;
         })
         .catch(() => caches.match("/"))
@@ -81,7 +85,7 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     caches.match(e.request).then((res) => {
       return res || fetch(e.request).then((fetchRes) => {
-        if (e.request.method === "GET") {
+        if (fetchRes.ok && e.request.method === "GET") {
           caches.open(CACHE_NAME).then((cache) => cache.put(e.request, fetchRes.clone()));
         }
         return fetchRes;

@@ -34,3 +34,10 @@ if ('serviceWorker' in navigator) {
       .catch(err => console.error('ServiceWorker registration failed:', err));
   });
 }
+
+// Handle Vite dynamic import (chunk load) failures gracefully
+window.addEventListener('vite:preloadError', (event) => {
+  console.warn('Vite preload error detected, reloading page to fetch latest version...', event);
+  window.location.reload();
+});
+
