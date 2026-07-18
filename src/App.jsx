@@ -1,7 +1,7 @@
 import React, { useEffect, useState, lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 import { db } from './services/firebase';
-import { collection, query, where, onSnapshot, getDocs, addDoc, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getDocs, addDoc, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { AuthProvider } from './contexts/AuthContext';
 import { ToastProvider } from './contexts/ToastContext';
 import PrivateRoute from './components/PrivateRoute';
@@ -143,10 +143,29 @@ function setVal(key, val) {
 }
 
 function AppLayout() {
-    const { currentUser } = useAuth();
+    const { currentUser, logout } = useAuth();
     const location = useLocation();
     const [attendanceActionSignal, setAttendanceActionSignal] = useState(0);
     const showMobileNav = currentUser && location.pathname !== '/login';
+
+    useEffect(() => {
+        if (!currentUser) return;
+
+        const checkDeletedStatus = async () => {
+            try {
+                const deletedSnap = await getDoc(doc(db, "deleted_users", currentUser.uid));
+                if (deletedSnap.exists()) {
+                    alert("This account has been deleted by an administrator.");
+                    await logout();
+                    window.location.href = "/login";
+                }
+            } catch (err) {
+                console.error("Error checking user deleted status:", err);
+            }
+        };
+
+        checkDeletedStatus();
+    }, [currentUser]);
 
     useEffect(() => {
         if (!currentUser) return;

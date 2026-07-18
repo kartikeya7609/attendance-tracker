@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Container, Table, Badge, Spinner, Form, Row, Col, Card, Button, Modal, Tab, Nav, Accordion, Alert, ProgressBar } from "react-bootstrap";
 import Navigation from "../components/Navigation";
 import { db } from "../services/firebase";
-import { collection, query, orderBy, getDocs, limit, where, doc, getDoc, deleteDoc, updateDoc } from "firebase/firestore";
+import { collection, query, orderBy, getDocs, limit, where, doc, getDoc, deleteDoc, updateDoc, writeBatch, Timestamp } from "firebase/firestore";
 import { getUserTimetables } from "../services/timetableService";
 import { FaFileDownload, FaSearch, FaUserShield, FaEye, FaBook, FaClock, FaTrash, FaExclamationTriangle, FaUsers, FaCalendarAlt, FaDownload } from "react-icons/fa";
 
@@ -383,12 +383,50 @@ export default function AdminResponses() {
         setDeleting(true);
         try {
             if (itemToDelete.type === 'response') {
-
                 await deleteDoc(doc(db, "attendance_records", itemToDelete.id));
-
             } else if (itemToDelete.type === 'timetable') {
                 await deleteDoc(doc(db, "public_timetables", itemToDelete.id));
                 setTimetables(prev => prev.filter(t => t.id !== itemToDelete.id));
+            } else if (itemToDelete.type === 'user') {
+                const targetUid = itemToDelete.id;
+                const batch = writeBatch(db);
+
+                // 1. Delete user document from users collection
+                batch.delete(doc(db, "users", targetUid));
+
+                // 2. Add user to deleted_users blocklist
+                batch.set(doc(db, "deleted_users", targetUid), {
+                    uid: targetUid,
+                    email: itemToDelete.name,
+                    deletedAt: Timestamp.now()
+                });
+
+                // 3. Query and delete other collections belonging to this user
+                const colConfigs = [
+                    { name: "attendance_records", field: "uid" },
+                    { name: "subjects", field: "uid" },
+                    { name: "holidays", field: "uid" },
+                    { name: "notifications", field: "uid" },
+                    { name: "feedback_reports", field: "uid" }
+                ];
+
+                for (const col of colConfigs) {
+                    const snap = await getDocs(query(collection(db, col.name), where(col.field, "==", targetUid)));
+                    snap.docs.forEach(docSnap => {
+                        batch.delete(doc(db, col.name, docSnap.id));
+                    });
+                }
+
+                // 4. Query and delete timetables created by this user
+                const timetablesSnap = await getDocs(query(collection(db, "public_timetables"), where("creatorUid", "==", targetUid)));
+                timetablesSnap.docs.forEach(docSnap => {
+                    batch.delete(doc(db, "public_timetables", docSnap.id));
+                });
+
+                await batch.commit();
+
+                // Remove user from the list
+                setStudents(prev => prev.filter(s => s.uid !== targetUid));
             }
             setShowDeleteModal(false);
             setItemToDelete(null);
@@ -846,9 +884,14 @@ export default function AdminResponses() {
                                                         <div className="fw-medium" style={{ color: 'var(--text-primary)' }}>{s.lastActive}</div>
                                                     </td>
                                                     <td className="text-end pe-4">
-                                                        <Button variant="light" size="sm" className="rounded-circle" onClick={() => handleViewStudent(s.email, s.uid)}>
-                                                            <FaEye />
-                                                        </Button>
+                                                        <div className="d-flex justify-content-end gap-2">
+                                                            <Button variant="light" size="sm" className="rounded-circle" onClick={() => handleViewStudent(s.email, s.uid)} title="View details">
+                                                                <FaEye />
+                                                            </Button>
+                                                            <Button variant="outline-danger" size="sm" className="rounded-circle" onClick={() => confirmDelete('user', s.uid, s.email)} title="Delete account">
+                                                                <FaTrash />
+                                                            </Button>
+                                                        </div>
                                                     </td>
                                                 </tr>
                                             ))
@@ -1207,7 +1250,7 @@ export default function AdminResponses() {
                             <div>
                                 <strong>This action cannot be undone!</strong>
                                 <p className="mb-0 mt-2">
-                                    Are you sure you want to delete this {itemToDelete?.type === 'response' ? 'attendance record' : 'timetable'}?
+                                    Are you sure you want to delete this {itemToDelete?.type === 'response' ? 'attendance record' : itemToDelete?.type === 'user' ? 'student account and all associated data' : 'timetable'}?
                                 </p>
                                 <p className="mb-0 mt-2 small">
                                     <strong>{itemToDelete?.name}</strong>

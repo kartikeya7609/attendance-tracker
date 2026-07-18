@@ -54,6 +54,12 @@ export async function ensureUserProfile(user) {
     const existing = await getUserProfile(user.uid);
     const fallbackSeed = user.displayName || user.email || user.uid;
     if (!existing) {
+        // Double check if this user has been deleted/blocked
+        const deletedSnap = await getDoc(doc(db, "deleted_users", user.uid));
+        if (deletedSnap.exists()) {
+            throw new Error("ACCOUNT_DELETED");
+        }
+
         const profile = {
             uid: user.uid,
             email: user.email,
